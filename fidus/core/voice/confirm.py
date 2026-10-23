@@ -38,14 +38,17 @@ class VoiceConfirmer:
         fallback: Confirmer,
         timeout_s: float = 8.0,
         notify: Callable[[str], None] = print,
+        intro: Callable[[], str] | None = None,
     ):
         self.speak, self.listen, self.fallback = speak, listen, fallback
         self.timeout_s, self.notify = timeout_s, notify
+        self.intro = intro  # fala do personagem para o momento "confirmar" (ex.: "Posso prosseguir, senhor?")
 
     def __call__(self, prompt: str) -> bool:
         answer = None
         try:
-            self.speak(f"{prompt} Diga sim ou não.")
+            lead = (self.intro() if self.intro else "") or ""
+            self.speak(f"{lead} {prompt} Diga sim ou não.".strip())
             answer = parse_yes_no(self.listen(self.timeout_s))
         except Exception as e:  # microfone ocupado, falha do STT etc.: nunca decide sozinho
             self.notify(f"(confirmação por voz falhou: {type(e).__name__})")

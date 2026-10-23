@@ -7,6 +7,18 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 
+class SystemPrompt(str):
+    """Prompt de sistema em duas partes: a estável (regras + personagem), que o cache de prompt da API reaproveita,
+    e a volátil (data, memória, resumo), que muda a cada pedido. Continua sendo uma `str` normal."""
+
+    stable_len: int
+
+    def __new__(cls, stable: str, volatile: str = ""):
+        obj = super().__new__(cls, stable + volatile)
+        obj.stable_len = len(stable)
+        return obj
+
+
 @dataclass
 class ToolSpec:
     name: str

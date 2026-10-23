@@ -9,6 +9,9 @@
   (opções de listen/wake-test/wake-bench: --somente-teste usa o modelo pronto "hey jarvis")
   uv run fidus say "texto"        testa a voz
   uv run fidus mics               lista os microfones
+  uv run fidus character list|show|reset|default|set|phrase   personagens (personalidade, frases, voz)
+  uv run fidus memory list|search|add|edit|delete|export|forget-all   memória única
+  uv run fidus user show|set      seu nome (usado nas falas)
   uv run fidus --check-key        testa a chave da Anthropic
 """
 
@@ -17,7 +20,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-COMMANDS = {"voice", "say", "mics", "listen", "wake-test", "wake-bench"}
+COMMANDS = {"voice", "say", "mics", "listen", "wake-test", "wake-bench", "character", "memory", "user"}
 
 
 def _cmd_mics() -> int:
@@ -38,14 +41,18 @@ def _cmd_mics() -> int:
     return 0
 
 
-def _cmd_say(text: str) -> int:
+def _cmd_say(text: str, character: str | None = None) -> int:
     from .core.config import load_config
+    from .core.persona import PersonaService
     from .core.voice.sentences import clean_for_speech
-    from .core.voice.tts import create_tts
+    from .core.voice.tts import TTSManager
 
     config = load_config()
-    tts = create_tts(config.voice.speech_rate)
-    print(f"Voz: {getattr(tts, 'voice_name', '?')}")
+    persona = PersonaService(config)
+    cid = persona.resolve_id(character)
+    tts = TTSManager(config.voice.speech_rate)
+    tts.use(persona.voice(cid))  # a voz do personagem
+    print(f"Personagem: {cid}   Voz: {tts.voice_name}")
     tts.speak(clean_for_speech(text))
     tts.wait_idle()
     tts.close()
@@ -99,20 +106,21 @@ def _text_mode(args) -> int:
             print(f"Falha ao usar a chave: {type(e).__name__}: {e}", file=sys.stderr)
             return 1
 
-    from .core.orchestrator import Orchestrator
+    from .core.assistant import build_assistant
     from .core.permissions import cli_confirmer
 
-    fidus = Orchestrator(config, provider, cli_confirmer)
+    fidus, persona, _ = build_assistant(config, cli_confirmer, provider=provider)
+    character = persona.resolve_id(args.personagem)
 
     def ask(text: str) -> None:
-        fidus.run(text, on_text=lambda chunk: print(chunk, end="", flush=True))  # streaming
+        fidus.run(text, on_text=lambda chunk: print(chunk, end="", flush=True), personagem_ativo=character)  # streaming
         print()
 
     if args.pedido:
         ask(" ".join(args.pedido))
         return 0
 
-    print(f"Fidus ({config.model}). Digite 'sair' para encerrar.")
+    print(f"Fidus ({config.model}), falando como {character}. Digite 'sair' para encerrar.")
     while True:
         try:
             text = input("você> ").strip()
@@ -133,6 +141,10 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] in COMMANDS:
         cmd, rest = argv[0], argv[1:]
+        if cmd in {"character", "memory", "user"}:
+            from . import cli_data
+
+            return getattr(cli_data, f"cmd_{cmd}")(rest)
         if cmd == "mics":
             try:
                 return _cmd_mics()
@@ -143,7 +155,12 @@ def main(argv: list[str] | None = None) -> int:
             if not rest:
                 print('Uso: fidus say "texto"', file=sys.stderr)
                 return 2
-            return _cmd_say(" ".join(rest))
+            who = None
+            if "--personagem" in rest:
+                i = rest.index("--personagem")
+                who = rest[i + 1] if i + 1 < len(rest) else None
+                rest = rest[:i] + rest[i + 2 :]
+            return _cmd_say(" ".join(rest), who)
         include_test, synthetic = "--somente-teste" in rest, "--sem-microfone" in rest
         if cmd == "listen":
             return _cmd_listen(include_test)
@@ -156,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="fidus", description="Assistente Fidus", epilog=__doc__)
     parser.add_argument("pedido", nargs="*", help="comando único; sem ele, abre o modo conversa")
     parser.add_argument("--check-key", action="store_true", help="testa se a chave da Anthropic funciona")
+    parser.add_argument("--personagem", help="alfred, donna ou jarbis (padrão: o personagem padrão)")
     return _text_mode(parser.parse_args(argv))
 
 

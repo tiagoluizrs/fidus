@@ -2,7 +2,7 @@
 
 Assistente de voz para desktop (Windows), "seu conselheiro de IA". Visão, arquitetura e roteiro em [`PROJETO.md`](PROJETO.md).
 
-**Estado atual: Etapa 2B (palavra de ativação) sobre a voz push-to-talk (Etapa 2) e o núcleo (Etapa 1).** Sem interface e sem Electron ainda. Personalidade dos personagens vem na etapa 3.
+**Estado atual: Etapa 3 (personagens e memória) sobre a palavra de ativação (2B), a voz (2) e o núcleo (1).** Sem integrações de e-mail/chat e sem interface ainda. Retomar o trabalho: veja `PROGRESSO.md`.
 
 ## Instalação (Windows 10/11, PowerShell)
 
@@ -75,6 +75,11 @@ fidus/core/
   providers/        interface única (base.py) + adaptador da Anthropic (com streaming)
   voice/            audio, hotkey, stt (Whisper), tts (SAPI), sentences, confirm, loop (push-to-talk)
                     audio_manager, wakeword, vad, characters, indicator, listen_loop, bench (palavra de ativação)
+                    persona_speech (falas e voz por personagem)
+  characters/       perfis, frases, prompt e cache de falas
+  memory/           lembranças em Markdown, SQLite (histórico e resumos) e criptografia
+  persona.py, assistant.py   serviço de personagens e montagem do assistente
+fidus/defaults/characters/   perfis padrão (nunca sobrescritos)
   tools/            um arquivo por ferramenta: abrir_app, buscar_arquivos, ler_agenda_google
 docs/WAKEWORDS.md   guia para treinar e instalar os modelos de palavra de ativação
 models/wakewords/   seus modelos .onnx (fora do Git)
@@ -98,7 +103,7 @@ Imports pesados (`anthropic`, Google, `keyring`, `faster-whisper`, `sounddevice`
 
 ## O que foi validado e o que falta validar no Windows
 
-Desenvolvido e testado em Linux (133 testes passando; o teste da chave da API pula sem `ANTHROPIC_API_KEY`). **Precisa ser validado no Windows:**
+Desenvolvido e testado em Linux (233 testes passando; o teste da chave da API pula sem `ANTHROPIC_API_KEY`). **Precisa ser validado no Windows:**
 
 - [ ] `abrir_app`: o lançamento real (`os.startfile`) é mockado nos testes. Conferir `abre o bloco de notas` e `abre a calculadora`.
 - [ ] `keyring` no Gerenciador de Credenciais do Windows (os testes usam um módulo falso).
@@ -273,6 +278,88 @@ da gravação com voz de verdade, porque ele inclui o atraso do próprio modelo 
       Alvo: 0 (no máximo 1). Se passar, suba o `limiar` da palavra (veja `docs/WAKEWORDS.md`, seção 4) e repita.
 - [ ] Repetir o teste de 15 min dizendo um nome parecido ou o nome da pessoa na TV; anotar os falsos.
 
+## Personagens e memória (Etapa 3)
+
+```powershell
+uv run fidus user set --nome Ana --sobrenome Lima     # usado nas falas ({nome}, {sobrenome})
+uv run fidus character list                           # alfred (padrão), donna, jarbis
+uv run fidus character show donna                     # perfil completo: personalidade, tratamentos, frases, voz
+uv run fidus character set donna --controle humor=80 --estilo mais_seco --extra "Seja breve"
+uv run fidus character phrase donna inicio add "Pode falar."     # add | edit | delete | on | off
+uv run fidus character reset donna --controle humor   # restaura UM controle ao padrão
+uv run fidus character reset donna --lista inicio     # restaura uma lista (frases do momento ou tratamentos)
+uv run fidus character reset donna --apagadas erro    # traz de volta só as padrão que você apagou
+uv run fidus character reset donna --tudo             # o personagem inteiro
+uv run fidus character default jarbis                 # quem responde ao atalho de teclado
+uv run fidus "que horas são?" --personagem donna      # texto, falando como a Donna
+uv run fidus say "Olá" --personagem alfred            # testa a voz do personagem
+
+uv run fidus memory add "Gosta de café sem açúcar" --etiqueta pessoal
+uv run fidus memory list [--secao rotinas] [--etiqueta trabalho]
+uv run fidus memory search café
+uv run fidus memory delete <id>                       # pede confirmação
+```
+
+**Perfis.** Os padrões ficam em `fidus/defaults/characters/*.json` e **nunca são sobrescritos**. Suas edições vão para
+`~\.fidus\characters\<id>.json`, só com o que mudou, e valem sobre o padrão. Restaurar é apagar a edição.
+Cada perfil tem: nome, chamado, cores do anel (escuro/claro), personalidade, tratamentos, falas e voz.
+
+**Personalidade.** Estilo base (padrão, mais seco, mais engraçado, mais áspero, personalizado), cinco controles de 0 a 100
+(formalidade, humor, aspereza, iniciativa, detalhe), cada um com valor padrão do personagem, e um campo de instruções
+extras. O prompt de sistema é montado a partir disso: cada controle vira uma instrução clara por faixa (`prompt.py`).
+Suas instruções extras e a memória entram **delimitadas como dado** e não alteram as regras de segurança nem as
+confirmações. "Iniciativa" alta só faz o Fidus **sugerir**; executar continua exigindo pedido e confirmação.
+
+**Frases.** Tratamentos (modo aleatório, fixo ou por contexto) e falas por momento (início, concluir, confirmar, erro,
+despedida), no mínimo 6 por categoria por personagem. Variáveis: `{tratamento}`, `{nome}`, `{sobrenome}`, `{periodo}`,
+`{hora}`, `{dia}` e `{saudacao}` (Bom dia/Boa tarde/Boa noite). O sorteio não repete a anterior; uma frase com variável
+sem valor (ex.: sem sobrenome) é pulada. Início toca ao ser chamado; confirmar abre a pergunta de confirmação por voz;
+erro e concluir entram nos fluxos de falha e de ação sem texto; despedida fecha a conversa quando você diz "tchau", "até
+logo", "era só isso" (sem chamar o modelo).
+
+**Falas de início pré-gravadas.** O áudio é gerado uma vez com a voz do personagem e guardado em
+`~\.fidus\speech_cache\<personagem>\`, por (personagem, frase, voz). Mudou a frase, o tom, a velocidade ou a voz, o
+áudio é gerado de novo e o antigo é apagado. O `listen` prepara tudo ao iniciar (a primeira vez demora alguns segundos) e
+a fala de início sai **antes** de a gravação abrir, para o microfone não gravar a própria voz.
+
+**Voz por personagem.** Motor, voz, tom e velocidade no perfil (`character set ... --voz --motor --tom --velocidade`).
+SAPI é o padrão (tom por marcação SAPI XML). Piper local é opcional: instale o Piper, defina `--motor piper` e `--voz
+<caminho do modelo .onnx>`. "Voz por descrição" na nuvem existe só como interface (`CloudVoiceProvider`), sem serviço.
+
+**Memória única**, igual para os três personagens, em `~\.fidus\memoria\`: `perfil.md`, `rotinas.md`, `contatos.md`,
+`projetos/<nome>.md` (arquivos que você pode abrir e editar; uma lembrança por linha) e o SQLite `fidus.db` (histórico e
+resumos). Etiquetas opcionais `geral`, `pessoal`, `trabalho` não mudam o comportamento. Só o trecho relevante ao pedido vai
+ao modelo (o perfil + o que casa com o assunto, limite `max_contexto_chars`). Conversas longas viram resumo (sem os
+resultados de ferramentas) e deixam de ser reenviadas inteiras. O prompt é dividido em parte estável (regras +
+personagem) e volátil (data, memória, resumo) para o **cache de prompt** da API.
+
+**Ferramenta `memoria`** (buscar, listar, ler, adicionar, editar, apagar): ler é leitura; adicionar/editar são escrita e
+pedem confirmação se `perguntar_antes_de_guardar = true`; **apagar sempre pede confirmação**. A saída vai delimitada como
+dado.
+
+**Defesa extra contra injeção.** Quando um comando já leu conteúdo externo (agenda, nomes de arquivos...), **nenhuma ação
+do mesmo comando é dispensada de confirmação**, nem apps da lista. Ler a própria memória não conta.
+
+**Criptografia do SQLite (SQLCipher).** Com `sqlcipher3-wheels` (instalado) e uma chave no Gerenciador de Credenciais
+do Windows (serviço `fidus`, nome `DB_KEY`, gerada sozinha), `fidus.db` fica cifrado; um banco comum já existente é
+migrado. Sem cofre ou sem o pacote, cai no SQLite comum e grava o aviso `memoria_sem_criptografia` no log
+(`criptografar = "sim"` torna isso um erro). Os arquivos Markdown **não** são cifrados (são para você ler e editar).
+
+### Checklist manual (Windows, Etapa 3)
+
+- [ ] `uv sync` baixa `sqlcipher3-wheels` para Windows; abrir `uv run fidus memory add "teste"` e conferir que
+      `~\.fidus\fidus.db` não abre como SQLite comum e que existe a credencial `fidus/DB_KEY` no Gerenciador de Credenciais.
+- [ ] `uv run fidus user set --nome <seu nome>`; `uv run fidus say "Olá" --personagem alfred|donna|jarbis` fala com tons
+      diferentes; anote se a diferença de tom/velocidade soa bem e ajuste com `character set`.
+- [ ] `uv run fidus listen`: primeira vez mostra "Preparando as falas de início"; ao chamar "ei Donna" (ou o modelo de
+      teste), a fala curta de início sai na hora e só depois o Fidus grava.
+- [ ] Trocar de personagem no meio: chamar "ei Alfred", pedir algo, chamar "ei Donna" e perguntar sobre o pedido anterior.
+- [ ] Dizer "tchau" encerra sem esperar continuação.
+- [ ] `fidus memory add ...` e perguntar por voz algo que dependa disso; `fidus memory delete` pede confirmação.
+- [ ] `character set donna --controle humor=100 --estilo mais_engracado` muda o jeito de responder.
+- [ ] Piper (opcional): instalar, `character set jarbis --motor piper --voz C:\\caminho\\modelo.onnx`, `say "Olá" --personagem jarbis`.
+- [ ] Conferir que `fidus/defaults/characters/*.json` não mudou depois de editar (`git status`).
+
 ## Fora do escopo desta etapa
 
-Personalidade dos personagens e memória (etapa 3), Gmail/Slack, interface, Piper e provedor Ollama. Ver o roteiro no `PROJETO.md`.
+Integrações Gmail/Slack (etapa 4) e interface (etapa 5), Gmail/Slack, interface, Piper e provedor Ollama. Ver o roteiro no `PROJETO.md`.

@@ -18,23 +18,22 @@ def make_manager(config: Config, stream_factory=None) -> AudioManager:
 
 
 def build_listen_loop(config: Config, include_test: bool = False):
-    from ..orchestrator import Orchestrator
+    from ..assistant import build_assistant, build_speaker
     from ..permissions import cli_confirmer
-    from ..providers import create_provider
+    from .audio_manager import to_float32
     from .confirm import VoiceConfirmer
     from .indicator import Indicator
     from .listen_loop import ListenLoop
     from .loop import VoiceLoop
     from .stt import Transcriber
-    from .tts import create_tts
+    from .tts import TTSManager
     from .vad import SilenceEndpointer, capture_utterance, load_vad
     from .wakeword import ActivationGate, DetectorRunner, load_detector
-    from .audio_manager import to_float32
 
     log = ActionLog(config.log_path)
     wake = config.wake
     manager = make_manager(config)
-    tts = create_tts(config.voice.speech_rate)
+    tts = TTSManager(config.voice.speech_rate)
     stt = Transcriber(config, log)
     vad = load_vad(wake.vad_threshold)
     indicator = Indicator()
@@ -63,12 +62,21 @@ def build_listen_loop(config: Config, include_test: bool = False):
             cap.close()
         return stt.transcribe(to_float32(audio)) if audio is not None else None
 
-    confirm = VoiceConfirmer(speak_and_wait, listen, cli_confirmer, config.voice.confirm_timeout_s)
-    orchestrator = Orchestrator(config, create_provider(config), confirm, log=log)
-    handler = VoiceLoop(config, orchestrator, stt, tts, None, log)
-    loop = ListenLoop(config, manager, runner, vad, handler, tts, indicator, log)
+    speaker_ref: dict = {}
+    confirm = VoiceConfirmer(
+        speak_and_wait, listen, cli_confirmer, config.voice.confirm_timeout_s,
+        intro=lambda: speaker_ref["s"].text_for(orchestrator.personagem_ativo, "confirmar"),
+    )
+    orchestrator, persona, _ = build_assistant(config, confirm, log=log)
+    speaker = build_speaker(config, persona, tts)
+    speaker_ref["s"] = speaker
+    handler = VoiceLoop(config, orchestrator, stt, tts, None, log, speaker=speaker)
+    loop = ListenLoop(config, manager, runner, vad, handler, tts, indicator, log, speaker=speaker)
     loop_ref["loop"] = loop
     stt.load()  # o Whisper carrega uma vez, antes de começar a escutar
+    if config.characters.speak_start:
+        print("Preparando as falas de início (só demora na primeira vez)...")
+        speaker.warm_up()
     return loop
 
 

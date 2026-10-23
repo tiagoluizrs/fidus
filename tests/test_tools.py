@@ -5,9 +5,9 @@ from fidus.core.tools.base import Risk, ToolError
 from fidus.core.tools.registry import load_tools
 
 
-def test_registro_descobre_as_tres_ferramentas():
+def test_registro_descobre_as_ferramentas():
     tools = load_tools()
-    assert set(tools) == {"abrir_app", "buscar_arquivos", "ler_agenda_google"}
+    assert set(tools) == {"abrir_app", "buscar_arquivos", "ler_agenda_google", "memoria"}
     for t in tools.values():
         assert t.description and t.parameters["type"] == "object"
     assert tools["abrir_app"].risk is Risk.ESCRITA
