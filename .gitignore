@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Fidus (configuração local, segredos e logs)
+.env
+fidus.toml
+.fidus/
+credentials.json
+token.json
