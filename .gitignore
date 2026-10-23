@@ -238,3 +238,4 @@ app/dist-electron/
 .tmp-sim-home/
 app/resources-core/
 app/release/
+shots/

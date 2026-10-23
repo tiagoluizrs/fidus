@@ -1,0 +1,27 @@
+# Gera o instalador Fidus-Setup-<versão>.exe num runner Windows e o anexa à execução (aba Actions > Artifacts).
+# Rode em Actions > "Instalador Windows" > Run workflow, ou crie uma tag v* (ex.: v0.1.0).
+name: Instalador Windows
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - name: Núcleo (PyInstaller)
+        run: .\packaging\build_core.ps1
+      - name: Conferir o pacote (selftest)
+        run: .\app\resources-core\fidus-core\fidus-core.exe selftest
+        env: { FIDUS_HOME: "${{ runner.temp }}\\fidus-home" }
+      - name: Instalador (electron-builder)
+        run: cd app; npm ci; npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fidus-Setup
+          path: app/release/Fidus-Setup-*.exe
+          if-no-files-found: error

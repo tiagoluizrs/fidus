@@ -1,0 +1,31 @@
+# Uso (na raiz do repositório):
+#   docker compose run --rm test     # pytest + testes e typecheck do app
+#   docker compose run --rm sim      # núcleo simulado + app Electron em tela virtual (gera capturas em ./shots)
+#   docker compose run --rm dev      # shell com o código montado (edite no seu editor, rode aqui)
+# Limites: sem microfone, sem voz do Windows e sem bandeja real. Voz de verdade só no Windows.
+services:
+  dev: &base
+    build: .
+    volumes:
+      - .:/work
+      - venv:/opt/venv
+      - node_modules:/work/app/node_modules
+    working_dir: /work
+    stdin_open: true
+    tty: true
+  test:
+    <<: *base
+    tty: false
+    command: bash -lc "uv run pytest -q && cd app && npx tsc --noEmit && xvfb-run -a npm test"
+  sim:
+    <<: *base
+    tty: false
+    environment:
+      FIDUS_AUTOPLAY: "1"
+      FIDUS_OPEN_SETTINGS: "geral"
+      FIDUS_SETTINGS_TOUR: "geral,voz,personagem,modelo,contas,privacidade,memoria,sobre"
+      FIDUS_SCREENSHOT_DIR: /work/shots
+    command: bash -lc "cd app && npm run build && xvfb-run -a npx electron . --no-sandbox --simulado"
+volumes:
+  venv:
+  node_modules:
