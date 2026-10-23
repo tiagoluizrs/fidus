@@ -514,6 +514,25 @@ app\resources-core\fidus-core\fidus-core.exe selftest   # confere as bibliotecas
 - Verificado em Linux: build do núcleo congelado, `selftest`, o app empacotado (`electron-builder --dir`) iniciando o núcleo
   congelado e conectando. O instalador `.exe` e a instalação limpa precisam ser feitos no Windows (checklist no LANCAMENTO).
 
+## Vozes: Piper (local) e nuvem
+
+Em Configurações > Personagem > **Voz** cada personagem escolhe entre quatro motores:
+
+| Motor | Onde roda | Como usar |
+| --- | --- | --- |
+| **Voz do sistema** | Local | Já vem no Windows. |
+| **Piper** | Local, grátis | Botão **Instalar o Piper** (22 MB do GitHub) e **Baixar** uma voz em português (63 MB, do Hugging Face). Tudo conferido por SHA-256; só HTTPS. Testado de verdade: a geração leva ~0,1 s para uma frase. |
+| **Voz por descrição** | Nuvem (ElevenLabs) | Você descreve a voz, gera prévias, ouve e escolhe uma. |
+| **Sua própria voz** | Nuvem (ElevenLabs) | Marca o consentimento, grava ~30 s lendo um texto e o serviço cria a voz. Só a **sua** voz. |
+
+- **Chave de API:** cada pessoa cola a **própria** chave do ElevenLabs na tela (vai para o cofre do Windows e nunca volta). A conta,
+  a cota e a voz clonada ficam com ela; há plano grátis (confira os limites na página do serviço).
+- **LGPD:** nas vozes da nuvem, cada frase falada (e, na voz própria, a gravação) sai do computador. A tela avisa antes.
+  "Apagar esta voz do serviço" remove a voz da conta do serviço. A gravação fica só na memória e é descartada depois de enviada.
+- **Não validado com uma conta real do ElevenLabs** (os testes usam um servidor falso; os endpoints foram conferidos na
+  documentação oficial). Se o seu plano não permitir criar vozes ou clonar, a tela mostra a mensagem do serviço.
+- As vozes do Piper do catálogo são masculinas (faber, cadu, jeff); o Piper também aceita outros modelos `.onnx`.
+
 ## Modelo local (Ollama)
 
 Em Configurações > Modelo de IA, escolha **Local** para usar o [Ollama](https://ollama.com) neste computador: nada do seu
@@ -527,22 +546,31 @@ lista (a tela mostra se o Ollama está aberto).
 - O endereço do Ollama só pode ser da própria máquina (`127.0.0.1`/`localhost`). Sem dependência nova: usa só a biblioteca padrão.
 - Não validado com um Ollama real nesta sessão (os testes usam um servidor falso): conferir no PC com o seu modelo.
 
-## Docker (desenvolvimento e testes) e instalador por CI
+## Testar no navegador com Docker (núcleo real) e instalador por CI
 
-- **Docker é só para desenvolver/testar em Linux** (pytest, testes do app, núcleo simulado + Electron em tela virtual).
-  Não tem microfone, voz do Windows nem bandeja real, e **não gera o `.exe`**: o Fidus é um app de desktop Windows.
+O Docker roda o **mesmo núcleo e as mesmas telas** do app instalado, menos o que só existe no Windows (microfone, "ei Alfred",
+voz do sistema, Piper, bandeja e janela flutuante). Você abre pelo endereço no navegador e **configura tudo pela tela**.
 
-```bash
-docker compose run --rm test   # pytest + typecheck + testes do app
-docker compose run --rm sim    # núcleo simulado + Electron em tela virtual; capturas em ./shots
-docker compose run --rm dev    # shell com o código montado
+```powershell
+docker compose up web
 ```
 
-- **O `.exe` (produção)** sai do GitHub Actions num runner Windows: Actions > "Instalador Windows" > *Run workflow* (ou
-  uma tag `v*`); o `Fidus-Setup-<versão>.exe` fica em *Artifacts*. A mesma coisa à mão: `docs/LANCAMENTO.md`.
-- `CI` roda pytest e os testes do app a cada PR.
-- Estes arquivos (`Dockerfile`, `docker-compose.yml`, workflows) foram escritos sem poder executá-los no ambiente da
-  sessão (sem daemon do Docker, sem runner Windows): a primeira execução pode pedir ajuste.
+O terminal mostra um endereço `http://127.0.0.1:5174/?k=...` (a chave `k` impede que outra página do navegador fale com o
+seu núcleo). Abra-o:
+
+- **O anel** (`/ring.html`): digite o pedido na caixa de baixo (no Windows seria falando); a resposta vem em legendas e as
+  confirmações aparecem na tela.
+- **Configurações** (`/settings.html`): em **Modelo de IA** cole a chave do Claude ou escolha **Local** (Ollama aberto no seu PC;
+  o container enxerga o `localhost` do PC por um encaminhamento interno, e o endereço continua restrito a `127.0.0.1`).
+- Chaves, memória e configurações ficam no volume `fidus-data` (sobrevivem a reinicios; `docker compose down -v` apaga).
+  Sem o cofre do Windows no container, as chaves ficam num arquivo do volume só com permissão do dono: **só para teste**.
+
+Outros comandos: `docker compose run --rm chat` (conversa por texto no terminal), `docker compose run --rm test`
+(pytest + testes do app), `docker compose run --rm sim` (capturas de tela do Electron simulado em `shots/`),
+`docker compose run --rm dev` (shell). Prévia só do layout, sem núcleo: `cd app; npm run dev:web` (guarda o que você mexe no navegador).
+
+**O `.exe` (produção)** sai do GitHub Actions num runner Windows: Actions > "Instalador Windows" > *Run workflow* (ou uma tag
+`v*`); o `Fidus-Setup-<versão>.exe` fica em *Artifacts*. A mesma coisa à mão: `docs/LANCAMENTO.md`. O `CI` roda pytest e os testes do app a cada PR.
 
 ## Fora do escopo
 

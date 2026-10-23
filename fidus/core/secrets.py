@@ -1,24 +1,66 @@
 """Chaves e tokens: Gerenciador de Credenciais do Windows (keyring) primeiro; `.env` só em desenvolvimento.
 
 Nomes conhecidos: ANTHROPIC_API_KEY, SLACK_TOKEN, DB_KEY (chave do SQLCipher) e GOOGLE_TOKEN_<serviço>.
-Nada aqui grava segredo em arquivo.
+Nada aqui grava segredo em arquivo (a única exceção é o FileVault do teste no Docker).
 """
 
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 
 SERVICE = "fidus"
 ANTHROPIC_KEY = "ANTHROPIC_API_KEY"
 SLACK_TOKEN = "SLACK_TOKEN"
-KNOWN = [ANTHROPIC_KEY, SLACK_TOKEN, "DB_KEY", "GOOGLE_TOKEN_calendar", "GOOGLE_TOKEN_gmail"]
+ELEVENLABS_KEY = "ELEVENLABS_API_KEY"
+KNOWN = [ANTHROPIC_KEY, SLACK_TOKEN, ELEVENLABS_KEY, "DB_KEY", "GOOGLE_TOKEN_calendar", "GOOGLE_TOKEN_gmail"]
 
 
 class VaultUnavailable(RuntimeError):
     """O cofre do sistema não está disponível (ex.: Linux sem Secret Service)."""
 
 
+class FileVault:
+    """Cofre em ARQUIVO, só para o teste no Docker (variável FIDUS_SECRETS_FILE): lá não existe o Gerenciador de
+    Credenciais do Windows. No app instalado nunca é usado. O arquivo fica no volume de dados, só com permissão do dono."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+
+    def _load(self) -> dict:
+        try:
+            return json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def _save(self, data: dict) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        tmp.replace(self.path)
+
+    def get_password(self, service: str, name: str) -> str | None:
+        return self._load().get(f"{service}:{name}")
+
+    def set_password(self, service: str, name: str, value: str) -> None:
+        data = self._load()
+        data[f"{service}:{name}"] = value
+        self._save(data)
+
+    def delete_password(self, service: str, name: str) -> None:
+        data = self._load()
+        data.pop(f"{service}:{name}", None)
+        self._save(data)
+
+
 def _keyring():
+    if os.environ.get("FIDUS_SECRETS_FILE"):
+        return FileVault(Path(os.environ["FIDUS_SECRETS_FILE"]))
     try:
         import keyring
 

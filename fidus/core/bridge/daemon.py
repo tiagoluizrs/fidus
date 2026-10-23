@@ -19,7 +19,7 @@ from .protocol import PROTOCOL_VERSION
 from .server import Bridge
 
 
-def run_daemon(config: Config, simulated: bool = False, out=None, include_test: bool = False, ready_event: threading.Event | None = None, watch_stdin: bool = False) -> int:
+def run_daemon(config: Config, simulated: bool = False, out=None, include_test: bool = False, ready_event: threading.Event | None = None, watch_stdin: bool = False, headless: bool = False) -> int:
     from ..persona import PersonaService
 
     out = out or sys.stdout
@@ -67,6 +67,27 @@ def run_daemon(config: Config, simulated: bool = False, out=None, include_test: 
         except KeyboardInterrupt:
             pass
         bridge.stop()
+        return 0
+
+    if headless:  # núcleo real, sem áudio: pedidos por texto (Docker/navegador)
+        from .headless import HeadlessLoop
+
+        try:
+            loop = HeadlessLoop(config, tap, state)
+            holder["commands"].loop, holder["commands"].broker = loop, loop.broker
+            holder["commands"].on_quit = lambda: (stop_event.set(), loop.request_stop())
+            holder["commands"].h.loop = loop
+            state.set_status("ready")
+            stop_event.wait()
+        except KeyboardInterrupt:
+            pass
+        except Exception as e:
+            state.set_status("error", f"{type(e).__name__}: {e}")
+            print(f"Erro no núcleo: {e}", file=sys.stderr, flush=True)
+            stop_event.wait(5)
+            return 1
+        finally:
+            bridge.stop()
         return 0
 
     try:

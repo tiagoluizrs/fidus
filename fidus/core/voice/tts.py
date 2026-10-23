@@ -6,6 +6,7 @@ Um thread por provedor é dono do motor de voz (o COM do SAPI exige isso) e proc
 from __future__ import annotations
 
 import queue
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -42,14 +43,6 @@ class TTSProvider(Protocol):
     def close(self) -> None: ...
 
 
-class CloudVoiceProvider(Protocol):
-    """Ponto de extensão para "voz por descrição" em um serviço na nuvem. Só a interface: nenhum serviço
-    é implementado. O texto da fala sairia do computador, então exigiria aviso e consentimento explícitos."""
-
-    def synthesize(self, text: str, description: str) -> bytes:
-        """Devolve áudio WAV da fala com a voz descrita (ex.: 'grave, calma, sotaque neutro')."""
-
-
 def _clamp(v: int, lo: int = -10, hi: int = 10) -> int:
     return max(lo, min(hi, int(v)))
 
@@ -68,6 +61,7 @@ class QueuedTTS:
         self._idle.set()
         self._ready = threading.Event()
         self._error: Exception | None = None
+        self.last_error = ""
         self._thread = threading.Thread(target=self._worker, daemon=True, name=f"fidus-tts-{type(self).__name__}")
 
     def _start(self) -> None:
@@ -106,7 +100,11 @@ class QueuedTTS:
             elif gen == self._gen:
                 if self.on_start:
                     self.on_start()
-                (self._say if kind == "say" else self._play)(payload, lambda g=gen: g != self._gen)
+                try:
+                    (self._say if kind == "say" else self._play)(payload, lambda g=gen: g != self._gen)
+                except Exception as e:  # uma fala que falha não pode matar o motor de voz
+                    self.last_error = f"{type(e).__name__}: {e}"
+                    print(f"[voz] {self.last_error}", file=sys.stderr)
             self._done()
 
     def _done(self) -> None:
@@ -244,11 +242,14 @@ class SapiTTS(QueuedTTS):
 
 
 class PiperTTS(QueuedTTS):
-    """Piper local (opcional): chama o executável `piper` com um modelo .onnx e toca o WAV gerado.
-    Não é instalado por padrão. Instale o Piper e aponte `voz.voice` do personagem para o modelo."""
+    """Piper local: chama o executável `piper` com um modelo .onnx e toca o WAV gerado.
 
-    def __init__(self, executable: str = "piper", runner: Callable = subprocess.run, player: Callable | None = None, tmp_dir: Path | None = None):
+    Com `store` (instalação guiada em Configurações), `voz.voice` é o id de uma voz do catálogo (ex.: pt_BR-faber-medium)
+    e o programa vem da pasta do Fidus. Sem `store`, vale o caminho do .onnx e o `piper` do PATH."""
+
+    def __init__(self, executable: str = "piper", runner: Callable = subprocess.run, player: Callable | None = None, tmp_dir: Path | None = None, store=None):
         super().__init__()
+        self.store = store
         self.executable, self.runner, self.player = executable, runner, player or play_wav
         self.model, self.length_scale = "", 1.0
         self._tmp = Path(tmp_dir) if tmp_dir else Path(tempfile.gettempdir())
@@ -256,16 +257,21 @@ class PiperTTS(QueuedTTS):
 
     def _configure(self, voice: Voice, base_rate: int) -> None:
         if voice.voice:
-            self.model = voice.voice
+            found = self.store.model_path(voice.voice) if self.store else voice.voice
+            self.model = str(found) if found else ""
             self.voice_name = Path(voice.voice).stem
         self.length_scale = round(1.0 - _clamp(base_rate + voice.rate) * 0.05, 3)  # +10 = 2x mais rápido
 
     def _run_piper(self, text: str, out: Path) -> None:
         if not self.model:
-            raise RuntimeError("Piper sem modelo: defina o caminho do .onnx em voz.voice do personagem.")
+            raise RuntimeError("Piper sem voz: instale uma voz em Configurações > Personagem > Voz.")
+        exe = str(self.store.exe) if self.store and self.store.exe.is_file() else self.executable
+        if self.store and exe == self.executable and not shutil.which(exe):
+            raise RuntimeError("O Piper ainda não está instalado: instale em Configurações > Personagem > Voz.")
         self.runner(
-            [self.executable, "--model", self.model, "--output_file", str(out), "--length_scale", str(self.length_scale)],
+            [exe, "--model", self.model, "--output_file", str(out), "--length_scale", str(self.length_scale)],
             input=text.encode("utf-8"), check=True, capture_output=True,
+            creationflags=0x08000000 if sys.platform == "win32" else 0,  # CREATE_NO_WINDOW: sem janela preta de console
         )
 
     def _say(self, text: str, cancelled: Callable[[], bool]) -> None:
@@ -308,9 +314,9 @@ class TTSManager:
     """Um provedor por motor, criados só quando um personagem pede aquele motor. Trocar de personagem
     reconfigura voz, tom e velocidade; o resto do código fala com este objeto como com qualquer TTSProvider."""
 
-    def __init__(self, base_rate: int = 0, factories: dict[str, Callable[[Voice], TTSProvider]] | None = None):
+    def __init__(self, base_rate: int = 0, factories: dict[str, Callable[[Voice], TTSProvider]] | None = None, data_dir: Path | None = None):
         self.base_rate = base_rate
-        self.factories = factories or default_factories(base_rate)
+        self.factories = factories or default_factories(base_rate, data_dir)
         self._providers: dict[str, TTSProvider] = {}
         self.current: TTSProvider | None = None
         self.current_voice = Voice()
@@ -320,7 +326,7 @@ class TTSManager:
         engine = voice.engine
         if engine not in self._providers:
             if engine not in self.factories:
-                raise RuntimeError(f"Motor de voz desconhecido: '{engine}'. Use sapi, piper ou descricao.")
+                raise RuntimeError(f"Motor de voz desconhecido: '{engine}'. Use sapi, piper, descricao ou propria.")
             self._providers[engine] = self.factories[engine](voice)
         provider = self._providers[engine]
         if provider is not self.current and self.current is not None:
@@ -386,13 +392,19 @@ def _sapi(voice: Voice) -> TTSProvider:
 
 
 def _cloud(voice: Voice) -> TTSProvider:
-    raise NotImplementedError(
-        "Voz por descrição (nuvem) ainda não é implementada: existe só o ponto de extensão CloudVoiceProvider."
-    )
+    from .. import secrets as vault
+    from .elevenlabs import CloudTTS, ElevenLabsClient
+
+    return CloudTTS(ElevenLabsClient(lambda: vault.get_secret(vault.ELEVENLABS_KEY)))
 
 
-def default_factories(base_rate: int = 0) -> dict[str, Callable[[Voice], TTSProvider]]:
-    return {"sapi": _sapi, "piper": lambda v: PiperTTS(), "descricao": _cloud}
+def default_factories(base_rate: int = 0, data_dir: Path | None = None) -> dict[str, Callable[[Voice], TTSProvider]]:
+    def piper(voice: Voice) -> TTSProvider:
+        from .piper_setup import PiperStore
+
+        return PiperTTS(store=PiperStore(Path(data_dir) / "piper")) if data_dir else PiperTTS()
+
+    return {"sapi": _sapi, "piper": piper, "descricao": _cloud, "propria": _cloud}
 
 
 def create_tts(rate: int = 0) -> TTSProvider:

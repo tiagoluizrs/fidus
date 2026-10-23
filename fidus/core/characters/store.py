@@ -68,7 +68,7 @@ class CharacterStore:
             address_fixed=addr_u.get("fixed", addr_d["fixed"]),
             address=_merge(addr_d["items"], addr_u.get("items", {})),
             phrases={m: _merge(d["phrases"].get(m, []), u.get("phrases", {}).get(m, {})) for m in MOMENTS},
-            voice=Voice(**{k: voice[k] for k in ("engine", "voice", "pitch", "rate")}),
+            voice=Voice(**{k: voice[k] for k in ("engine", "voice", "pitch", "rate")}, description=str(voice.get("description", ""))),
         )
 
     def load_all(self) -> dict[str, Profile]:
@@ -204,7 +204,7 @@ class CharacterStore:
         self._mutate(cid, fn)
 
     def set_voice(self, cid: str, **fields) -> None:
-        allowed = {"engine", "voice", "pitch", "rate"}
+        allowed = {"engine", "voice", "pitch", "rate", "description"}
         bad = set(fields) - allowed
         if bad:
             raise ValueError(f"Campos de voz inválidos: {', '.join(sorted(bad))}")

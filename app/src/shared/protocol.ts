@@ -52,6 +52,9 @@ export type CoreEvent =
   | { type: "characters_changed"; id: string }
   | { type: "memory_changed" }
   | { type: "accounts"; service: string; status: "connected" | "disconnected" | "error"; message: string }
+  | { type: "voice_setup"; what: string; state: "progress" | "done" | "error"; done?: number; total?: number; message?: string }
+  | { type: "open_url"; url: string }
+  | { type: "voice_record"; state: "recording" | "done"; elapsed: number; total: number }
   | { type: "error"; message: string };
 
 export const COMMANDS = [
@@ -74,6 +77,9 @@ export const COMMANDS = [
   "devices",
   "api_key",
   "local_models",
+  "piper",
+  "voice_cloud",
+  "ask",
   "simulate",
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];

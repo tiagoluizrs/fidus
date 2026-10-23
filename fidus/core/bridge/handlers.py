@@ -6,6 +6,7 @@ Cada comando do protocolo recebe `{op: "...", ...}`. Tudo é validado aqui; a in
 from __future__ import annotations
 
 import json
+import os
 import platform
 import sys
 import threading
@@ -22,6 +23,7 @@ from ..characters.store import ADDRESS, CharacterStore
 from ..memory.markdown_store import SECTIONS, TAGS
 from ..memory.service import get_memory
 from ..services import google_auth
+from ..services.base import NotConnected
 
 VERSION = "0.1.0"
 MAX_ITEM = 300
@@ -53,6 +55,11 @@ class Handlers:
         self.config, self.state, self.persona, self.loop = config, state, persona, loop
         self.store: CharacterStore = persona.store
         self.save_settings = save_settings or (lambda patch: None)
+        self._jobs: set[str] = set()
+        self._jobs_lock = __import__("threading").Lock()
+        self._previews: dict[str, bytes] = {}  # prévias de voz geradas (só na memória)
+        self._sample: bytes | None = None  # gravação da própria voz (só na memória; apagada depois de enviada)
+        self._recording = False
 
     def emit(self, type: str, **data) -> None:
         self.state.events.emit(type, **data)
@@ -79,7 +86,7 @@ class Handlers:
                             "controls": controls, "extra": pr.personality.extra},
             "address": {"mode": pr.address_mode, "fixed": pr.address_fixed, "items": items(pr.address), "deleted": gone(ADDRESS)},
             "phrases": {m: {"items": items(pr.phrases[m]), "deleted": gone(m)} for m in MOMENTS},
-            "voice": {"engine": pr.voice.engine, "voice": pr.voice.voice, "pitch": pr.voice.pitch, "rate": pr.voice.rate,
+            "voice": {"engine": pr.voice.engine, "voice": pr.voice.voice, "pitch": pr.voice.pitch, "rate": pr.voice.rate, "description": pr.voice.description,
                       "default": d["voice"]},
             "variables": ["{tratamento}", "{nome}", "{sobrenome}", "{periodo}", "{hora}", "{dia}", "{saudacao}"],
         }
@@ -137,11 +144,13 @@ class Handlers:
             else:
                 s.reset_list(cid, lst)
         elif op == "set_voice":
-            fields = {k: a[k] for k in ("engine", "voice", "pitch", "rate") if k in a}
-            if "engine" in fields and fields["engine"] not in ("sapi", "piper", "descricao"):
+            fields = {k: a[k] for k in ("engine", "voice", "pitch", "rate", "description") if k in a}
+            if "engine" in fields and fields["engine"] not in ("sapi", "piper", "descricao", "propria"):
                 raise ValueError("Motor de voz inválido.")
             if "voice" in fields:
                 fields["voice"] = str(fields["voice"])[:300]
+            if "description" in fields:
+                fields["description"] = str(fields["description"])[:1000]
             for k in ("pitch", "rate"):
                 if k in fields and (isinstance(fields[k], bool) or not isinstance(fields[k], (int, float))):
                     raise ValueError(f"'{k}' precisa ser um número de -10 a 10.")
@@ -229,6 +238,25 @@ class Handlers:
     def accounts(self, op: str = "list", **a) -> dict:
         if op == "list":
             return self._accounts_status()
+        if op == "google_credentials":  # o credentials.json enviado pela tela (em vez de copiar o arquivo à mão)
+            text = str(a.get("json", ""))
+            if len(text) > 20000:
+                raise ValueError("Arquivo grande demais para ser o credentials.json.")
+            try:
+                google_auth.validate_client_file(text)
+            except NotConnected as e:
+                raise ValueError(str(e)) from e
+            path = self.config.google_credentials_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+            return self._accounts_status()
+        if op == "google_credentials_remove":
+            self.config.google_credentials_path.unlink(missing_ok=True)
+            return self._accounts_status()
         service = a.get("service")
         if service not in ("gmail", "agenda", "slack"):
             raise ValueError("Serviço inválido.")
@@ -246,7 +274,7 @@ class Handlers:
                 self.emit("accounts", service=service, status="connected", message=f"{info.get('team', '')}")
                 return self._accounts_status()
             self._connect_google(service, write)
-            return {"started": True, "message": "Autorize no navegador que vai abrir."}
+            return {"started": True, "message": "Autorize no navegador que vai abrir." if not getattr(self.loop, "headless", False) else "Clique no link de autorização que vai aparecer."}
         if op == "disconnect":
             if service == "slack":
                 vault.delete_secret(vault.SLACK_TOKEN)
@@ -275,7 +303,8 @@ class Handlers:
 
         def work() -> None:
             try:
-                google_auth.connect(self.config, svc, write)
+                open_url = (lambda url: self.emit("open_url", url=url)) if getattr(self.loop, "headless", False) else None
+                google_auth.connect(self.config, svc, write, open_url=open_url)
                 self.save_settings({("contas.google.agenda_escrita" if service == "agenda" else "contas.google.gmail_rascunhos"): write})
                 self.emit("accounts", service=service, status="connected", message="")
             except Exception as e:  # falta o credentials.json, o usuário fechou o navegador, etc.
@@ -399,7 +428,198 @@ class Handlers:
         in_vault = vault.get_vault_secret(vault.ANTHROPIC_KEY) is not None
         return {"stored": in_vault, "source": "cofre" if in_vault else ("ambiente" if vault.get_secret(vault.ANTHROPIC_KEY) else "nenhuma")}
 
+    # ================================================================== voz: Piper (local) e nuvem
+
+    def piper(self, op: str = "status", voice: str = "") -> dict:
+        """Instalação guiada do Piper. Baixar roda em segundo plano e avisa pelo evento `voice_setup`."""
+        from ..voice.piper_setup import VOICES, PiperStore, SetupError
+
+        store = PiperStore(self.config.data_dir / "piper")
+        try:
+            if op == "status":
+                return {**store.status(), "busy": bool(self._jobs)}
+            if op == "install":
+                self._job("piper", store.install_piper)
+            elif op == "download_voice":
+                if voice not in VOICES:
+                    raise ValueError(f"Voz desconhecida: {voice}")
+                self._job(voice, lambda progress: store.download_voice(voice, progress))
+            elif op == "remove_voice":
+                store.remove_voice(voice)
+                return {**store.status(), "busy": bool(self._jobs)}
+            else:
+                raise ValueError(f"Operação desconhecida: {op}")
+        except SetupError as e:
+            raise ValueError(str(e)) from e
+        return {"started": True}
+
+    def _job(self, name: str, fn) -> None:
+        import threading
+        import time
+
+        from ..voice.piper_setup import SetupError
+
+        with self._jobs_lock:
+            if self._jobs:
+                raise ValueError("Já existe um download em andamento. Espere terminar.")
+            self._jobs.add(name)
+        last = [0.0]
+
+        def progress(done: int, total: int) -> None:
+            if time.monotonic() - last[0] > 0.25:
+                last[0] = time.monotonic()
+                self.emit("voice_setup", what=name, state="progress", done=done, total=total)
+
+        def run() -> None:
+            try:
+                fn(progress)
+                self.emit("voice_setup", what=name, state="done")
+            except (SetupError, OSError) as e:
+                self.emit("voice_setup", what=name, state="error", message=str(e))
+            finally:
+                with self._jobs_lock:
+                    self._jobs.discard(name)
+
+        threading.Thread(target=run, daemon=True, name="fidus-voice-setup").start()
+
+    def _eleven(self):
+        from .. import secrets as vault
+        from ..voice.elevenlabs import ElevenLabsClient
+
+        return ElevenLabsClient(lambda: vault.get_secret(vault.ELEVENLABS_KEY))
+
+    def voice_cloud(self, op: str = "status", **a) -> dict:
+        """Voz na nuvem (ElevenLabs): a chave é da própria pessoa e nunca volta para a tela."""
+        from .. import secrets as vault
+        from ..voice.elevenlabs import CloudVoiceError
+
+        try:
+            if op == "set_key":
+                key = str(a.get("value", "")).strip()
+                if len(key) < 20 or any(c.isspace() for c in key):
+                    raise ValueError("Isso não parece uma chave de API do serviço de voz.")
+                vault.set_secret(vault.ELEVENLABS_KEY, key)
+            elif op == "clear_key":
+                vault.delete_secret(vault.ELEVENLABS_KEY)
+            elif op == "design_preview":
+                previews = self._eleven().design_previews(str(a.get("description", "")))[-3:]
+                self._previews = {p["id"]: p["wav"] for p in previews}
+                return {**self._cloud_status(), "previews": [{"id": p["id"]} for p in previews]}
+            elif op == "play_preview":
+                wav = self._previews.get(str(a.get("preview", "")))
+                if wav is None:
+                    raise ValueError("Essa prévia expirou. Gere de novo.")
+                self._play_wav_bytes(wav)
+            elif op == "save_preview":
+                cid, pid = self._char(a), str(a.get("preview", ""))
+                if pid not in self._previews:
+                    raise ValueError("Essa prévia expirou. Gere de novo.")
+                desc = str(a.get("description", ""))
+                voice_id = self._eleven().create_voice(f"Fidus {self.store.load(cid).name}", desc, pid)
+                self.store.set_voice(cid, engine="descricao", voice=voice_id, description=desc[:1000])
+                self._after_voice_change(cid)
+            elif op == "record_sample":
+                self._record_sample(max(5, min(60, int(a.get("seconds", 30)))))
+                return {"started": True}
+            elif op == "clone":
+                if a.get("consent") is not True:
+                    raise ValueError("Marque que você consente em gravar e usar a sua voz.")
+                if self._sample is None:
+                    raise ValueError("Grave a sua voz primeiro.")
+                cid = self._char(a)
+                voice_id = self._eleven().clone_voice(f"Fidus {self.store.load(cid).name} (minha voz)", self._sample)
+                self.store.set_voice(cid, engine="propria", voice=voice_id, description="")
+                self._sample = None  # a gravação não fica guardada no computador
+                self._after_voice_change(cid)
+            elif op == "delete_voice":
+                cid = self._char(a)
+                voice = self.store.load(cid).voice
+                if voice.engine in ("descricao", "propria") and voice.voice:
+                    self._eleven().delete_voice(voice.voice)
+                self.store.reset_voice(cid)
+                self._after_voice_change(cid)
+            elif op != "status":
+                raise ValueError(f"Operação desconhecida: {op}")
+        except CloudVoiceError as e:
+            raise ValueError(str(e)) from e
+        return self._cloud_status()
+
+    def _cloud_status(self) -> dict:
+        from .. import secrets as vault
+
+        return {
+            "has_key": bool(vault.get_secret(vault.ELEVENLABS_KEY)),
+            "stored": vault.get_vault_secret(vault.ELEVENLABS_KEY) is not None,
+            "has_sample": self._sample is not None,
+        }
+
+    def _char(self, a: dict) -> str:
+        cid = str(a.get("id", ""))
+        if cid not in self.store.ids():
+            raise ValueError(f"Personagem desconhecido: {cid}")
+        return cid
+
+    def _after_voice_change(self, cid: str) -> None:
+        speaker = getattr(self.loop, "speaker", None)
+        if speaker:
+            speaker.apply_voice(cid)
+        self.emit("characters_changed", id=cid)
+
+    def _play_wav_bytes(self, wav: bytes) -> None:
+        import tempfile
+        import threading
+        from pathlib import Path
+
+        from ..voice.tts import play_wav
+
+        def run() -> None:
+            with tempfile.TemporaryDirectory() as d:
+                p = Path(d) / "previa.wav"
+                p.write_bytes(wav)
+                play_wav(p)
+
+        threading.Thread(target=run, daemon=True, name="fidus-preview").start()
+
+    def _record_sample(self, seconds: int) -> None:
+        """Grava a voz da pessoa pelo microfone que o Fidus já usa (sem abrir outro fluxo). Só fica na memória."""
+        import threading
+        import time
+
+        import numpy as np
+
+        manager = getattr(self.loop, "manager", None)
+        if manager is None:
+            raise ValueError("A gravação só funciona com o núcleo real e o microfone ligado.")
+        if manager.muted:
+            raise ValueError("O microfone está silenciado. Reative para gravar.")
+        if self._recording:
+            raise ValueError("Já estou gravando.")
+        self._recording, self._sample = True, None
+
+        def run() -> None:
+            from ..voice.audio_manager import SAMPLE_RATE
+            from ..voice.elevenlabs import pcm_to_wav
+
+            cap = manager.open_capture()
+            blocks: list = []
+            try:
+                end = time.monotonic() + seconds
+                while (left := end - time.monotonic()) > 0:
+                    time.sleep(0.2)
+                    blocks.append(cap.drain())
+                    self.emit("voice_record", state="recording", elapsed=round(seconds - left, 1), total=seconds)
+                blocks.append(cap.drain())
+            finally:
+                cap.close()
+                self._recording = False
+            audio = np.concatenate(blocks) if blocks else np.zeros(0, dtype=np.int16)
+            self._sample = pcm_to_wav(audio.astype(np.int16).tobytes(), SAMPLE_RATE)
+            self.emit("voice_record", state="done", elapsed=seconds, total=seconds)
+
+        threading.Thread(target=run, daemon=True, name="fidus-record-sample").start()
+
     def local_models(self) -> dict:
+
         """Modelos já baixados no Ollama (para a tela). Se o Ollama não estiver rodando, diz isso em vez de falhar."""
         from ..config import DEFAULT_LOCAL_MODEL
         from ..providers.ollama import OllamaError, list_models

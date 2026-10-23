@@ -150,3 +150,110 @@ describe("tela Modelo de IA (Ollama)", () => {
     expect(screen.getByText(/ollama pull qwen3:8b/)).toBeInTheDocument();
   });
 });
+
+describe("aba Voz do personagem", () => {
+  const openVoice = async (init: Parameters<typeof installFakeCore>[0] = {}) => {
+    const f = installFakeCore(init);
+    const user = await open("Personagem");
+    await user.click(await screen.findByRole("tab", { name: "Voz" }));
+    return { f, user };
+  };
+
+  it("mostra as quatro opções de voz", async () => {
+    await openVoice();
+    for (const n of ["Voz do sistema", "Piper", "Voz por descrição", "Sua própria voz"]) expect(await screen.findByRole("radio", { name: new RegExp(n) })).toBeInTheDocument();
+  });
+
+  it("Piper: instala o programa, baixa uma voz e escolhe", async () => {
+    const { f, user } = await openVoice();
+    await user.click(screen.getByRole("radio", { name: /Piper/ }));
+    await user.click(await screen.findByRole("button", { name: "Instalar o Piper" }));
+    await waitFor(() => expect(sent(f.calls, "piper", "install")).toHaveLength(1));
+    await user.click(await screen.findByRole("button", { name: "Baixar a voz Faber" }));
+    await waitFor(() => expect(sent(f.calls, "piper", "download_voice")[0][1].voice).toBe("pt_BR-faber-medium"));
+    const radio = await screen.findByRole("radio", { name: /Faber/ });
+    await waitFor(() => expect(radio).toBeEnabled());
+    await user.click(radio);
+    await waitFor(() => expect(f.profiles.alfred.voice).toMatchObject({ engine: "piper", voice: "pt_BR-faber-medium" }));
+  });
+
+  it("voz por descrição: sem chave não gera; com a chave gera a prévia e usa; avisa que usa a internet", async () => {
+    const { f, user } = await openVoice();
+    await user.click(screen.getByRole("radio", { name: /Voz por descrição/ }));
+    expect(await screen.findByText(/Esta opção usa a internet/)).toBeInTheDocument();
+    const desc = screen.getByLabelText(/Descreva a voz do Alfred/);
+    await user.type(desc, "Masculina, grave e calma, sotaque britânico.");
+    expect(screen.getByRole("button", { name: "Gerar prévia" })).toBeDisabled(); // sem chave
+    await user.click(screen.getByRole("button", { name: "Definir" }));
+    await user.type(screen.getByLabelText("Chave de API"), "k".repeat(30));
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Gerar prévia" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Gerar prévia" }));
+    await user.click(await screen.findByRole("button", { name: "Usar a prévia 2" }));
+    await waitFor(() => expect(f.profiles.alfred.voice).toMatchObject({ engine: "descricao", voice: "voz123" }));
+    expect(JSON.stringify(f.calls)).not.toContain("kkkkkkkkkkkkkkkkkkkkkkkkkkkkkk".repeat(2)); // a chave só vai uma vez, no set_key
+  });
+
+  it("sua própria voz: só cria depois do consentimento", async () => {
+    const { f, user } = await openVoice();
+    await user.click(screen.getByRole("radio", { name: /Sua própria voz/ }));
+    const gravar = await screen.findByRole("button", { name: /Gravar/ });
+    expect(gravar).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Criar minha voz" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /Eu consinto/ }));
+    expect(sent(f.calls, "voice_cloud", "clone")).toHaveLength(0);
+  });
+});
+
+describe("Escutar chamados", () => {
+  it.each(["Geral", "Voz"])("o interruptor liga e desliga na tela %s e avisa o núcleo", async (tela) => {
+    const f = installFakeCore();
+    const user = await open(tela);
+    const sw = await screen.findByRole("switch", { name: "Escutar chamados" });
+    expect(sw).toHaveAttribute("aria-checked", "true");
+    await user.click(sw);
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Escutar chamados" })).toHaveAttribute("aria-checked", "false"));
+    expect(sent(f.calls, "calls")[0][1]).toEqual({ value: false });
+    await user.click(screen.getByRole("switch", { name: "Escutar chamados" }));
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Escutar chamados" })).toHaveAttribute("aria-checked", "true"));
+  });
+});
+
+describe("tela Contas: credenciais do Google e login pelo navegador", () => {
+  const arquivo = (texto: string) => {
+    const f = new File([texto], "credentials.json", { type: "application/json" });
+    Object.defineProperty(f, "text", { value: async () => texto }); // o jsdom não implementa File.text()
+    return f;
+  };
+
+  it("envia o credentials.json pela tela em vez de pedir para copiar o arquivo", async () => {
+    const f = installFakeCore();
+    const user = await open("Contas");
+    await user.click(await screen.findByRole("button", { name: "Remover" })); // começa com o arquivo; remove para simular a falta
+    expect(await screen.findByText("Falta enviar")).toBeInTheDocument();
+    await user.upload(screen.getByLabelText("Enviar o credentials.json"), arquivo('{"installed":{"client_id":"x"}}'));
+    await waitFor(() => expect(sent(f.calls, "accounts", "google_credentials")).toHaveLength(1));
+    expect(await screen.findByText("Enviado")).toBeInTheDocument();
+  });
+
+  it("arquivo inválido mostra o erro do núcleo e continua faltando", async () => {
+    installFakeCore();
+    const user = await open("Contas");
+    await user.click(await screen.findByRole("button", { name: "Remover" }));
+    await user.upload(screen.getByLabelText("Enviar o credentials.json"), arquivo("nao e o arquivo certo"));
+    expect(await screen.findByText(/campos esperados/)).toBeInTheDocument();
+    expect(screen.getByText("Falta enviar")).toBeInTheDocument();
+  });
+
+  it("mostra o link de autorização só se for do Google", async () => {
+    const f = installFakeCore();
+    await open("Contas");
+    await screen.findByText("Credenciais do Google");
+    f.emit({ type: "open_url", url: "https://evil.example/phish" });
+    expect(screen.queryByRole("link", { name: /página de autorização/ })).toBeNull();
+    f.emit({ type: "open_url", url: "https://accounts.google.com/o/oauth2/auth?x=1" });
+    const link = await screen.findByRole("link", { name: /página de autorização/ });
+    expect(link).toHaveAttribute("href", "https://accounts.google.com/o/oauth2/auth?x=1");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
+  });
+});

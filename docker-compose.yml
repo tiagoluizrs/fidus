@@ -17,6 +17,39 @@ services:
     <<: *base
     tty: false
     command: bash -lc "uv run pytest -q && cd app && npx tsc --noEmit && xvfb-run -a npm test"
+  # ---- Testes com o nucleo REAL (sem simulacao), sem microfone/voz/bandeja ----
+  # Tudo se configura PELA TELA (Configuracoes > Modelo de IA): cole a chave do Claude ou escolha o Ollama do seu PC.
+  # (Para o Ollama, deixe-o aberto no seu PC.) Chaves, memoria e configuracoes ficam no volume fidus-data.
+  #
+  # Experiencia completa no NAVEGADOR (anel + configuracoes, nucleo real):
+  #   docker compose up web           -> abra o endereco http://127.0.0.1:5174/?k=... que aparece no terminal
+  # So no terminal, por texto:
+  #   docker compose run --rm chat
+  web:
+    <<: *base
+    tty: false
+    volumes: &realvolumes
+      - .:/work
+      - venv:/opt/venv
+      - node_modules:/work/app/node_modules
+      - fidus-data:/data
+    ports:
+      - "127.0.0.1:5174:5174"
+      - "127.0.0.1:8085:8085"  # retorno do login do Google
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment: &realenv
+      FIDUS_HOME: /data
+      FIDUS_WEB_BIND: 0.0.0.0
+      FIDUS_SECRETS_FILE: /data/secrets.json  # sem o cofre do Windows no container: as chaves coladas na tela ficam aqui
+    command: ["bash", "docker/web.sh"]
+  chat:
+    <<: *base
+    volumes: *realvolumes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment: *realenv
+    command: ["bash", "docker/chat.sh"]
   sim:
     <<: *base
     tty: false
@@ -27,5 +60,6 @@ services:
       FIDUS_SCREENSHOT_DIR: /work/shots
     command: bash -lc "cd app && npm run build && xvfb-run -a npx electron . --no-sandbox --simulado"
 volumes:
+  fidus-data:
   venv:
   node_modules:
