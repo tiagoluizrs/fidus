@@ -49,7 +49,7 @@ describe("tela do anel", () => {
     expect(screen.getByRole("status", { name: "Microfone ativo" })).toBeInTheDocument();
     expect(screen.getByText("Donna · Claude · Nuvem")).toBeInTheDocument();
     expect(screen.getByText("para fechar")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Anel de luz reagindo à voz" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Esfera de linhas reagindo à voz" })).toBeInTheDocument();
   });
 
   it("rótulo do estado e legendas acompanham os eventos", async () => {
