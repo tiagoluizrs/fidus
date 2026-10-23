@@ -35,6 +35,9 @@ class Tool:
     def is_tainting(self) -> bool:
         return self.untrusted if self.taints is None else self.taints
 
+    def precheck(self, args: dict, config: Config) -> None:
+        """Roda ANTES de pedir confirmação. Levanta ToolError se a ação nem pode acontecer (ex.: escrita não liberada)."""
+
     def preapproved(self, args: dict, config: Config) -> bool:
         """Só vale para ESCRITA: permite dispensar a confirmação em casos já liberados na configuração."""
         return False
