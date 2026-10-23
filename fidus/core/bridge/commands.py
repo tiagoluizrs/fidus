@@ -161,9 +161,9 @@ class CoreCommands:
             raise ValueError("Pedidos por texto só existem no modo `fidus daemon --headless` (testes no Docker/navegador).")
         return ask(text, id)
 
-    def cmd_local_models(self):
+    def cmd_local_models(self, op: str = "list", model: str = ""):
         self.h.loop = self.loop
-        return self.h.local_models()
+        return self.h.local_models(op, model)
 
     def cmd_voices(self, engine: str = "sapi"):
         self.h.loop = self.loop

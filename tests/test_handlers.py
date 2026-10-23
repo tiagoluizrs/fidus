@@ -644,3 +644,41 @@ def test_conectar_o_google_sem_o_credentials_json_avisa_na_hora(cmds, config):
     with pytest.raises(ValueError, match="Envie primeiro o credentials.json"):
         call(cmds, "accounts", op="connect", service="agenda")
     assert not any(t == "open_url" for t, _ in cmds.sink.seen)
+
+
+def test_baixar_modelo_do_ollama_pelo_painel_avisa_pelos_eventos(cmds, monkeypatch):
+    import time
+
+    from fidus.core.providers import ollama
+
+    def fake_pull(url, model, progress=None, **kw):
+        assert model == "llama3.2:3b"
+        progress and progress(50, 100)
+
+    monkeypatch.setattr(ollama, "pull_model", fake_pull)
+    assert call(cmds, "local_models", op="pull", model="llama3.2:3b") == {"started": True}
+    for _ in range(100):
+        if any(t == "model_pull" and d["state"] == "done" for t, d in cmds.sink.seen):
+            break
+        time.sleep(0.02)
+    states = [d["state"] for t, d in cmds.sink.seen if t == "model_pull"]
+    assert states[-1] == "done" and "progress" in states
+    with pytest.raises(ValueError, match="inválido"):
+        call(cmds, "local_models", op="pull", model="x; y")
+
+
+def test_erro_ao_baixar_modelo_vira_evento_de_erro(cmds, monkeypatch):
+    import time
+
+    from fidus.core.providers import ollama
+
+    def boom(url, model, progress=None, **kw):
+        raise ollama.OllamaError("Ollama fechado")
+
+    monkeypatch.setattr(ollama, "pull_model", boom)
+    call(cmds, "local_models", op="pull", model="llama3.2:3b")
+    for _ in range(100):
+        if any(t == "model_pull" and d["state"] == "error" for t, d in cmds.sink.seen):
+            break
+        time.sleep(0.02)
+    assert ("model_pull", {"what": "llama3.2:3b", "state": "error", "message": "Ollama fechado"}) in cmds.sink.seen

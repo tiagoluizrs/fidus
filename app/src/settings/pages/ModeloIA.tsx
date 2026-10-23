@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useCore } from "../core";
 import { Badge, Button, Dialog, Page, Row, Section, Switch } from "../ui";
 
-interface LocalModels { running: boolean; models: string[]; suggested: string; url: string }
+interface LocalModels { running: boolean; models: string[]; suggested: string; url: string; busy?: boolean }
 
 export function ModeloIA() {
-  const { eff, save, call, claudeModels, notify } = useCore();
+  const { eff, save, call, claudeModels, notify, subscribe } = useCore();
+  const [pullName, setPullName] = useState("");
+  const [pull, setPull] = useState<{ what: string; pct: number } | null>(null);
   const [key, setKey] = useState<{ stored: boolean; source: string } | null>(null);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
@@ -19,6 +21,19 @@ export function ModeloIA() {
   const refresh = useCallback(async () => setOllama(await call<LocalModels>("local_models", {}, { quiet: true })), [call]);
   useEffect(() => { if (local) void refresh(); }, [local, refresh]);
   const installed = ollama?.models ?? [];
+  useEffect(() => subscribe((e) => {
+    if (e.type !== "model_pull") return;
+    if (e.state === "progress") return setPull({ what: e.what, pct: e.total ? Math.round(((e.done ?? 0) / e.total) * 100) : 0 });
+    setPull(null);
+    if (e.state === "error") return notify("error", e.message ?? "Não consegui baixar o modelo.");
+    notify("ok", `Modelo ${e.what} baixado.`);
+    void save({ "modelo.local": e.what }); // já deixa selecionado
+    void refresh();
+  }), [subscribe, notify, save, refresh]);
+  const startPull = async () => {
+    const name = pullName.trim();
+    if (name && (await call("local_models", { op: "pull", model: name }))) setPull({ what: name, pct: 0 });
+  };
 
   const submit = async () => {
     const r = await call<{ stored: boolean; source: string }>("api_key", { op: "set", value });
@@ -59,7 +74,7 @@ export function ModeloIA() {
         )}
         {local && (
           <Row label="Modelo local" htmlFor="local-model"
-            hint={ollama?.running === false ? `O Ollama não está acessível. Abra o app dele (se o Fidus roda no Docker, abra com OLLAMA_HOST=0.0.0.0 para o container enxergar) e, se preciso, baixe um modelo: ollama pull ${ollama.suggested}` : "Escolha um modelo que suporte ferramentas (por exemplo qwen3:8b ou llama3.1:8b)."}>
+            hint={ollama?.running === false ? "O Ollama não está acessível. Abra o app dele e clique em Atualizar." : installed.length ? "Escolha um modelo que suporte ferramentas (por exemplo llama3.2, llama3.1 ou qwen3)." : "Nenhum modelo baixado ainda: baixe um abaixo."}>
             <span className="inline">
               <Badge tone={ollama?.running ? "ok" : "neutral"}>{ollama == null ? "Verificando…" : ollama.running ? "Ollama aberto" : "Ollama fechado"}</Badge>
               <select id="local-model" value={localModel} onChange={(e) => save({ "modelo.local": e.target.value })}>
@@ -70,6 +85,20 @@ export function ModeloIA() {
             </span>
           </Row>
         )}
+        {local && ollama?.running && (
+          <Row label="Baixar um modelo" htmlFor="pull-name" hint="Baixa pelo próprio Ollama, uma vez. Modelos de 3B são rápidos; os de 8B pedem mais memória e tempo.">
+            <span className="inline">
+              <input id="pull-name" list="pull-suggestions" value={pullName} placeholder="llama3.2:3b" onChange={(e) => setPullName(e.target.value)} />
+              <datalist id="pull-suggestions">
+                <option value="llama3.2:3b">Llama 3.2 · 3B (~2 GB, rápido)</option>
+                <option value="llama3.1:8b">Llama 3.1 · 8B (~4,7 GB)</option>
+                <option value="qwen3:8b">Qwen 3 · 8B (~5 GB)</option>
+              </datalist>
+              <Button disabled={!pullName.trim() || pull !== null || ollama.busy} onClick={() => void startPull()}>{pull ? "Baixando…" : "Baixar"}</Button>
+            </span>
+          </Row>
+        )}
+        {local && pull && <progress max={100} value={pull.pct} aria-label={`Baixando ${pull.what}`}>{pull.pct}%</progress>}
       </Section>
 
       <Section title="Ações com o modelo local" subtitle="Vale quando o provedor é Local. Por padrão o modelo local só lê (agenda, e-mails, arquivos, memória); criar, editar, apagar e enviar ficam bloqueados.">
