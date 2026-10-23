@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Fidus – anel em tela cheia</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 800px; background: #000000; overflow: hidden; font-family: 'Inter', system-ui, sans-serif; color: #F5F5F7">
+
+<div style="position: absolute; left: 48px; top: 40px; display: flex; align-items: center; gap: 10px">
+<svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><defs><linearGradient id="lg" x1="11" y1="0" x2="11" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FF6A3D"/><stop offset="0.5" stop-color="#FF5C9E"/><stop offset="1" stop-color="#3D8BFF"/></linearGradient></defs><circle cx="11" cy="11" r="8.5" fill="none" stroke="url(#lg)" stroke-width="2"/></svg>
+<span style="font-size: 15px; font-weight: 600; letter-spacing: 0.2px">Fidus</span>
+</div>
+
+<div style="position: absolute; right: 48px; top: 36px; display: flex; align-items: center; gap: 10px">
+<div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border: 1px solid #232327; border-radius: 16px; font-size: 13px; color: #F5F5F7">
+<span style="width: 8px; height: 8px; border-radius: 4px; background: #30A46C"></span>
+<span>Microfone ativo</span>
+</div>
+<div style="display: flex; align-items: center; height: 32px; padding: 0 14px; border: 1px solid #232327; border-radius: 16px; font-size: 13px; color: #8E8E96">Alfred · Claude · Nuvem</div>
+</div>
+
+<svg width="600" height="600" viewBox="0 0 600 600" style="position: absolute; left: 340px; top: 90px" role="img" aria-label="Anel de luz reagindo à voz">
+<defs>
+<linearGradient id="g" x1="300" y1="60" x2="300" y2="540" gradientUnits="userSpaceOnUse">
+<stop offset="0" stop-color="#FF6A3D"/>
+<stop offset="0.35" stop-color="#FF5C9E"/>
+<stop offset="0.7" stop-color="#B38CFF"/>
+<stop offset="1" stop-color="#3D8BFF"/>
+</linearGradient>
+<filter id="blur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9"/></filter>
+</defs>
+<use href="#p1" filter="url(#blur)" opacity="0.55" stroke-width="3"/>
+<path id="p1" d="M536 300 L542 316 L541 332 L535 347 L530 362 L526 377 L519 391 L507 402 L497 414 L491 428 L487 444 L480 458 L469 469 L458 480 L447 492 L435 501 L418 505 L402 506 L387 511 L375 520 L361 527 L346 530 L331 533 L316 540 L300 545 L284 542 L269 534 L255 528 L240 525 L225 521 L212 513 L198 506 L183 503 L166 501 L151 494 L141 481 L132 468 L122 456 L112 444 L107 429 L103 414 L95 401 L83 390 L73 377 L68 362 L66 347 L62 331 L59 316 L62 300 L69 285 L74 270 L74 255 L73 239 L76 224 L82 210 L86 194 L89 178 L97 165 L111 155 L126 147 L137 137 L147 125 L158 115 L172 108 L183 98 L194 85 L206 74 L222 70 L238 70 L254 69 L269 67 L285 67 L300 70 L315 72 L330 69 L347 65 L363 66 L377 73 L391 79 L406 85 L420 93 L430 106 L439 119 L451 128 L465 135 L479 143 L488 155 L498 168 L509 179 L519 192 L522 208 L520 225 L521 241 L527 255 L531 270 L532 285 Z" stroke="url(#g)" stroke-width="1.2" fill="none" stroke-linejoin="round"/>
+<path d="M523 300 L517 314 L516 328 L513 342 L504 355 L494 366 L490 379 L495 396 L498 415 L494 430 L482 440 L470 449 L460 460 L450 471 L435 476 L417 475 L401 475 L391 484 L382 499 L372 511 L358 517 L344 519 L330 525 L315 533 L300 534 L285 524 L272 510 L260 502 L246 502 L231 503 L218 499 L205 492 L191 489 L173 489 L156 488 L144 478 L140 460 L137 443 L130 430 L121 420 L115 407 L113 392 L110 379 L98 369 L81 359 L70 346 L69 330 L74 315 L77 300 L76 285 L80 271 L90 258 L103 247 L108 235 L104 219 L100 201 L103 186 L112 174 L121 163 L127 148 L135 135 L150 129 L169 129 L186 129 L197 122 L206 110 L217 99 L230 94 L244 89 L256 80 L269 68 L284 63 L300 70 L314 83 L328 91 L341 92 L355 93 L368 99 L380 107 L394 110 L411 107 L430 105 L444 113 L451 128 L457 143 L466 155 L475 166 L480 180 L480 196 L482 210 L492 220 L509 229 L522 241 L525 255 L525 270 L526 285 Z" stroke="url(#g)" stroke-width="1.2" fill="none" opacity="0.76" stroke-linejoin="round"/>
+<path d="M499 300 L495 313 L496 326 L505 341 L511 356 L503 369 L490 379 L483 390 L476 402 L463 409 L451 416 L448 430 L448 448 L441 460 L428 466 L417 474 L406 484 L391 484 L374 478 L361 480 L351 492 L340 501 L327 504 L314 507 L300 515 L286 516 L273 503 L262 491 L249 489 L236 489 L224 483 L212 478 L196 481 L179 482 L169 471 L165 454 L158 442 L148 433 L144 420 L141 406 L130 398 L112 393 L101 382 L100 368 L99 354 L95 341 L97 327 L107 313 L111 300 L103 287 L95 273 L96 259 L99 246 L98 231 L101 218 L116 209 L133 203 L139 193 L142 179 L149 168 L158 158 L163 143 L167 127 L180 120 L198 123 L212 122 L224 116 L236 112 L250 113 L262 107 L273 92 L286 83 L300 88 L314 94 L327 95 L340 100 L350 112 L361 121 L375 118 L392 113 L405 117 L416 126 L429 132 L441 139 L445 155 L445 173 L452 184 L465 189 L476 198 L482 210 L492 220 L505 230 L509 244 L501 260 L494 274 L497 287 Z" stroke="url(#g)" stroke-width="1.2" fill="none" opacity="0.52" stroke-linejoin="round"/>
+<path d="M492 300 L497 313 L504 327 L499 339 L488 350 L484 362 L478 374 L468 383 L467 396 L469 413 L461 423 L449 431 L441 441 L429 447 L414 448 L405 457 L399 471 L388 479 L376 484 L366 493 L352 494 L337 486 L325 487 L313 493 L300 494 L287 496 L273 503 L260 501 L250 488 L238 482 L226 478 L216 470 L205 465 L188 468 L175 462 L169 450 L160 440 L153 429 L151 415 L145 404 L130 398 L120 389 L116 376 L109 365 L105 352 L112 337 L115 324 L108 313 L104 300 L104 287 L99 274 L98 260 L110 249 L120 239 L123 226 L128 215 L135 205 L134 189 L137 175 L149 168 L162 162 L171 153 L184 149 L196 145 L203 132 L210 118 L223 115 L236 111 L248 106 L262 110 L276 116 L288 110 L300 103 L313 103 L326 101 L340 99 L351 108 L361 121 L373 124 L385 127 L396 134 L410 136 L425 137 L433 148 L438 162 L446 172 L452 183 L456 196 L467 204 L482 210 L487 222 L488 236 L493 248 L492 262 L485 276 L488 288 Z" stroke="url(#g)" stroke-width="1.2" fill="none" opacity="0.4" stroke-linejoin="round"/>
+</svg>
+
+<div style="position: absolute; left: 0; right: 0; top: 700px; text-align: center; font-size: 14px; color: #8E8E96; letter-spacing: 0.3px">Ouvindo…</div>
+
+<div style="position: absolute; right: 48px; bottom: 56px; width: 360px; display: flex; flex-direction: column; gap: 10px; text-align: right">
+<div style="font-size: 14px; line-height: 1.45; color: #8E8E96">O que tenho na agenda hoje?</div>
+<div style="font-size: 16px; line-height: 1.45; color: #F5F5F7">Bom dia. Você tem duas reuniões; a primeira é às 9h.</div>
+</div>
+
+<div style="position: absolute; left: 48px; bottom: 56px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8E8E96">
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border: 1px solid #232327; border-radius: 6px; color: #F5F5F7">Esc</span>
+<span>para fechar</span>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

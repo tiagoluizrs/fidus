@@ -1,0 +1,13 @@
+# Copie para fidus.toml (não vai para o Git).
+
+[geral]
+max_chamadas_ferramenta = 8
+
+[arquivos]
+# Fora destas pastas o Fidus não procura nem lê arquivos.
+pastas_liberadas = ["~/Documents", "~/Desktop"]
+
+[apps.permitidos]
+# nome falado = comando do Windows. Abrem sem confirmação; qualquer outro app pede [s/n].
+"bloco de notas" = "notepad.exe"
+"calculadora" = "calc.exe"
