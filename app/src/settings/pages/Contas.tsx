@@ -32,7 +32,15 @@ export function Contas() {
     if (d) setSt(d);
   }, [call]);
   useEffect(() => void load(), [load]);
+  // Voltando da aba do Google (ou de um evento perdido), a lista de contas é relida sozinha
+  useEffect(() => {
+    const again = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", again);
+    window.addEventListener("focus", again);
+    return () => { document.removeEventListener("visibilitychange", again); window.removeEventListener("focus", again); };
+  }, [load]);
   useEffect(() => subscribe((e) => {
+    if (e.type === "ready") { void load(); return; }
     if (e.type === "open_url") {
       if (e.url.startsWith("https://accounts.google.com/")) setAuthUrl(e.url); // só o endereço de login do Google vira link
       return;

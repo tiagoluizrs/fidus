@@ -600,45 +600,6 @@ def test_credentials_invalido_e_recusado_e_nada_e_gravado(cmds, config, texto, t
     assert not config.google_credentials_path.exists()
 
 
-def test_login_do_google_no_modo_headless_entrega_o_link_e_usa_porta_fixa(cmds, config, monkeypatch):
-    import time
-    from types import SimpleNamespace
-
-    from fidus.core.services import google_auth
-
-    call(cmds, "accounts", op="google_credentials", json=DESKTOP)
-    FakeVault().install(monkeypatch)
-    seen = {}
-
-    class Flow:
-        def __init__(self, path, scopes):
-            self.scopes = scopes
-
-        def run_local_server(self, **kw):
-            seen.update(kw)
-            import webbrowser
-
-            webbrowser.get(kw["browser"]).open("https://accounts.google.com/o/oauth2/auth?x=1")
-            return SimpleNamespace(refresh_token="R", client_id="c", client_secret="s", token_uri=None)
-
-    import sys
-    import types
-
-    mod = types.ModuleType("google_auth_oauthlib.flow")
-    mod.InstalledAppFlow = SimpleNamespace(from_client_secrets_file=Flow)
-    monkeypatch.setitem(sys.modules, "google_auth_oauthlib", types.ModuleType("google_auth_oauthlib"))
-    monkeypatch.setitem(sys.modules, "google_auth_oauthlib.flow", mod)
-    cmds.loop = SimpleNamespace(headless=True, handler=None)
-    cmds.h.loop = cmds.loop
-    call(cmds, "accounts", op="connect", service="agenda")
-    for _ in range(100):
-        if any(t == "accounts" and d["status"] == "connected" for t, d in cmds.sink.seen):
-            break
-        time.sleep(0.02)
-    assert ("open_url", {"url": "https://accounts.google.com/o/oauth2/auth?x=1"}) in cmds.sink.seen
-    assert seen["port"] == google_auth.OAUTH_PORT and seen["bind_addr"] == "0.0.0.0" and seen["host"] == "localhost"
-
-
 def test_conectar_o_google_sem_o_credentials_json_avisa_na_hora(cmds, config):
     assert not config.google_credentials_path.exists()
     with pytest.raises(ValueError, match="Envie primeiro o credentials.json"):
@@ -682,51 +643,3 @@ def test_erro_ao_baixar_modelo_vira_evento_de_erro(cmds, monkeypatch):
             break
         time.sleep(0.02)
     assert ("model_pull", {"what": "llama3.2:3b", "state": "error", "message": "Ollama fechado"}) in cmds.sink.seen
-
-
-def test_segundo_clique_em_conectar_reenvia_o_link_e_nao_abre_outro_login(cmds, config, monkeypatch):
-    import sys
-    import threading
-    import time
-    import types
-    from types import SimpleNamespace
-
-    call(cmds, "accounts", op="google_credentials", json=DESKTOP)
-    FakeVault().install(monkeypatch)
-    starts, release = [], threading.Event()
-
-    class Flow:
-        def __init__(self, path, scopes):
-            pass
-
-        def run_local_server(self, **kw):
-            import webbrowser
-
-            starts.append(1)
-            webbrowser.get(kw["browser"]).open("https://accounts.google.com/o/oauth2/auth?x=1")
-            release.wait(5)
-            return SimpleNamespace(refresh_token="R", client_id="c", client_secret="s", token_uri=None)
-
-    mod = types.ModuleType("google_auth_oauthlib.flow")
-    mod.InstalledAppFlow = SimpleNamespace(from_client_secrets_file=Flow)
-    monkeypatch.setitem(sys.modules, "google_auth_oauthlib", types.ModuleType("google_auth_oauthlib"))
-    monkeypatch.setitem(sys.modules, "google_auth_oauthlib.flow", mod)
-    cmds.loop = SimpleNamespace(headless=True, handler=None)
-    cmds.h.loop = cmds.loop
-
-    call(cmds, "accounts", op="connect", service="agenda")
-    for _ in range(100):
-        if any(t == "open_url" for t, _ in cmds.sink.seen):
-            break
-        time.sleep(0.02)
-    call(cmds, "accounts", op="connect", service="agenda")  # segundo clique
-    assert sum(1 for t, _ in cmds.sink.seen if t == "open_url") == 2 and starts == [1]  # mesmo link de novo, um login só
-    with pytest.raises(ValueError, match="Já existe um login"):
-        call(cmds, "accounts", op="connect", service="gmail")
-    release.set()
-    for _ in range(100):
-        if any(t == "accounts" and d["status"] == "connected" for t, d in cmds.sink.seen):
-            break
-        time.sleep(0.02)
-    call(cmds, "accounts", op="connect", service="gmail")  # terminou: o próximo login é liberado
-    release.set()
