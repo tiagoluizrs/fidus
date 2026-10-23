@@ -81,6 +81,7 @@ export const COMMANDS = [
   "api_key",
   "local_models",
   "piper",
+  "kokoro",
   "voice_cloud",
   "ask",
   "ask_audio",

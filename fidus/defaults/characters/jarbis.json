@@ -226,9 +226,13 @@
     ]
   },
   "voice": {
-    "engine": "sapi",
-    "voice": "",
-    "pitch": 0,
-    "rate": 0
+    "engine": "kokoro",
+    "voice": "pm_alex",
+    "pitch": 5,
+    "rate": -1,
+    "timbre": 0,
+    "edge": 0,
+    "pronunciations": "Jarbis=Járbis",
+    "effect": "robo"
   }
 }

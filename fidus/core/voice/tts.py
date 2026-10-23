@@ -5,6 +5,7 @@ Um thread por provedor é dono do motor de voz (o COM do SAPI exige isso) e proc
 
 from __future__ import annotations
 
+import dataclasses
 import queue
 import shutil
 import subprocess
@@ -43,8 +44,16 @@ class TTSProvider(Protocol):
     def close(self) -> None: ...
 
 
+from .effects import apply_effect, apply_pronunciations, set_pitch, shape_file  # noqa: E402
+
+
 def _clamp(v: int, lo: int = -10, hi: int = 10) -> int:
     return max(lo, min(hi, int(v)))
+
+
+def pitch_factor(pitch: int) -> float:
+    """-10 (bem grave) a +10 (bem agudo) -> fator da taxa do áudio (~0,76 a 1,32)."""
+    return round(2 ** (_clamp(pitch) * 0.04), 4)
 
 
 class QueuedTTS:
@@ -251,7 +260,7 @@ class PiperTTS(QueuedTTS):
         super().__init__()
         self.store = store
         self.executable, self.runner, self.player = executable, runner, player or play_wav
-        self.model, self.length_scale = "", 1.0
+        self.model, self.length_scale, self.effect, self.pitch_factor, self.timbre, self.edge, self.pron = "", 1.0, "", 1.0, 0, 0, ""
         self._tmp = Path(tmp_dir) if tmp_dir else Path(tempfile.gettempdir())
         self._start()
 
@@ -260,7 +269,10 @@ class PiperTTS(QueuedTTS):
             found = self.store.model_path(voice.voice) if self.store else voice.voice
             self.model = str(found) if found else ""
             self.voice_name = Path(voice.voice).stem
-        self.length_scale = round(1.0 - _clamp(base_rate + voice.rate) * 0.05, 3)  # +10 = 2x mais rápido
+        self.pitch_factor = pitch_factor(voice.pitch)
+        # o tom sobe/desce mudando a taxa do áudio, o que também muda a velocidade: a duração é compensada aqui
+        self.length_scale = round((1.0 - _clamp(base_rate + voice.rate) * 0.05) * self.pitch_factor, 3)  # +10 = 2x mais rápido
+        self.effect, self.timbre, self.edge, self.pron = voice.effect, voice.timbre, voice.edge, voice.pronunciations
 
     def _run_piper(self, text: str, out: Path) -> None:
         if not self.model:
@@ -270,9 +282,12 @@ class PiperTTS(QueuedTTS):
             raise RuntimeError("O Piper ainda não está instalado: instale em Configurações > Personagem > Voz.")
         self.runner(
             [exe, "--model", self.model, "--output_file", str(out), "--length_scale", str(self.length_scale)],
-            input=text.encode("utf-8"), check=True, capture_output=True,
+            input=apply_pronunciations(text, self.pron).encode("utf-8"), check=True, capture_output=True,
             creationflags=0x08000000 if sys.platform == "win32" else 0,  # CREATE_NO_WINDOW: sem janela preta de console
         )
+        shape_file(out, self.timbre, self.edge)
+        set_pitch(out, self.pitch_factor)
+        apply_effect(out, self.effect)
 
     def _say(self, text: str, cancelled: Callable[[], bool]) -> None:
         out = self._tmp / f"fidus-piper-{threading.get_ident()}.wav"
@@ -287,6 +302,59 @@ class PiperTTS(QueuedTTS):
 
     def _synth(self, text: str, path: Path) -> bool:
         self._run_piper(text, path)
+        return True
+
+
+class KokoroTTS(QueuedTTS):
+    """Kokoro local (voz neural com opção feminina em português). `voz.voice` é o id da voz (ex.: pf_dora)."""
+
+    def __init__(self, store, player: Callable | None = None, tmp_dir: Path | None = None):
+        super().__init__()
+        self.store, self.player = store, player or play_wav
+        self.speaker, self.speed, self.effect, self.pitch_factor, self.timbre, self.edge, self.pron = "pf_dora", 1.0, "", 1.0, 0, 0, ""
+        self._tmp = Path(tmp_dir) if tmp_dir else Path(tempfile.gettempdir())
+        self._start()
+
+    def _configure(self, voice: Voice, base_rate: int) -> None:
+        from .kokoro_setup import DEFAULT_VOICE, VOICES
+
+        self.speaker = voice.voice if voice.voice in VOICES else DEFAULT_VOICE
+        self.voice_name = self.speaker
+        self.pitch_factor = pitch_factor(voice.pitch)
+        self.speed = round((1.0 + _clamp(base_rate + voice.rate) * 0.05) / self.pitch_factor, 3)
+        self.effect, self.timbre, self.edge, self.pron = voice.effect, voice.timbre, voice.edge, voice.pronunciations
+
+    def _run_kokoro(self, text: str, out: Path) -> None:
+        import wave
+
+        import numpy as np
+
+        from .kokoro_setup import load_engine
+
+        samples, sr = load_engine(self.store).create(apply_pronunciations(text, self.pron), voice=self.speaker, speed=self.speed, lang="pt-br")
+        pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
+        with wave.open(str(out), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(int(sr))
+            w.writeframes(pcm.tobytes())
+        shape_file(out, self.timbre, self.edge)
+        set_pitch(out, self.pitch_factor)
+        apply_effect(out, self.effect)
+
+    def _say(self, text: str, cancelled: Callable[[], bool]) -> None:
+        out = self._tmp / f"fidus-kokoro-{threading.get_ident()}.wav"
+        try:
+            self._run_kokoro(text, out)
+            self.player(out, cancelled)
+        finally:
+            out.unlink(missing_ok=True)
+
+    def _play(self, path: Path, cancelled: Callable[[], bool]) -> None:
+        self.player(path, cancelled)
+
+    def _synth(self, text: str, path: Path) -> bool:
+        self._run_kokoro(text, path)
         return True
 
 
@@ -321,12 +389,30 @@ class TTSManager:
         self.current: TTSProvider | None = None
         self.current_voice = Voice()
         self._on_start: Callable[[], None] | None = None
+        self.data_dir = Path(data_dir) if data_dir else None
+
+    def _local_ready(self, voice: Voice) -> bool:
+        """Vozes neurais locais só valem depois de instaladas; sem elas o personagem fala com a voz do sistema."""
+        if not self.data_dir:
+            return True
+        if voice.engine == "kokoro":
+            from .kokoro_setup import KokoroStore
+
+            return KokoroStore(self.data_dir / "kokoro").installed()
+        if voice.engine == "piper":
+            from .piper_setup import PiperStore
+
+            store = PiperStore(self.data_dir / "piper")
+            return store.exe.is_file() and store.model_path(voice.voice) is not None
+        return True
 
     def use(self, voice: Voice) -> None:
+        if voice.engine in ("kokoro", "piper") and "sapi" in self.factories and sys.platform == "win32" and not self._local_ready(voice):
+            voice = dataclasses.replace(voice, engine="sapi", voice="")  # ainda sem a voz instalada: usa a do Windows
         engine = voice.engine
         if engine not in self._providers:
             if engine not in self.factories:
-                raise RuntimeError(f"Motor de voz desconhecido: '{engine}'. Use sapi, piper, descricao ou propria.")
+                raise RuntimeError(f"Motor de voz desconhecido: '{engine}'. Use sapi, piper, kokoro, descricao ou propria.")
             self._providers[engine] = self.factories[engine](voice)
         provider = self._providers[engine]
         if provider is not self.current and self.current is not None:
@@ -404,7 +490,14 @@ def default_factories(base_rate: int = 0, data_dir: Path | None = None) -> dict[
 
         return PiperTTS(store=PiperStore(Path(data_dir) / "piper")) if data_dir else PiperTTS()
 
-    return {"sapi": _sapi, "piper": piper, "descricao": _cloud, "propria": _cloud}
+    def kokoro(voice: Voice) -> TTSProvider:
+        from .kokoro_setup import KokoroStore
+
+        if not data_dir:
+            raise RuntimeError("O Kokoro precisa da pasta de dados do Fidus.")
+        return KokoroTTS(KokoroStore(Path(data_dir) / "kokoro"))
+
+    return {"sapi": _sapi, "piper": piper, "kokoro": kokoro, "descricao": _cloud, "propria": _cloud}
 
 
 def create_tts(rate: int = 0) -> TTSProvider:

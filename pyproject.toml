@@ -20,6 +20,7 @@ dependencies = [
     "openwakeword>=0.6",
     "sqlcipher3-wheels>=0.5",
     "websockets>=14",
+    "kokoro-onnx>=0.6.1",
 ]
 
 [project.scripts]

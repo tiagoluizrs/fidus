@@ -379,3 +379,16 @@ describe("Como perceber o chamado", () => {
     await waitFor(() => expect(f.effective["chamados.modo"]).toBe("voz"));
   });
 });
+
+describe("Kokoro e voz robótica", () => {
+  it("instala o Kokoro, escolhe a voz feminina e liga o efeito de robô", async () => {
+    const f = installFakeCore();
+    const user = await open("Personagem");
+    await user.click(await screen.findByRole("tab", { name: "Voz" }));
+    await user.click(screen.getByRole("radio", { name: /Kokoro/ }));
+    await user.click(await screen.findByRole("button", { name: "Instalar o Kokoro" }));
+    await waitFor(() => expect(sent(f.calls, "kokoro", "install")).toHaveLength(1));
+    await user.click(await screen.findByRole("checkbox", { name: /efeito de robô/ }));
+    await waitFor(() => expect(f.profiles.alfred.voice).toMatchObject({ engine: "kokoro", effect: "robo" }));
+  });
+});

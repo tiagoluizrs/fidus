@@ -151,6 +151,10 @@ class CoreCommands:
         self.h.loop = self.loop
         return self.h.piper(op, voice)
 
+    def cmd_kokoro(self, op: str = "status"):
+        self.h.loop = self.loop
+        return self.h.kokoro(op)
+
     def cmd_voice_cloud(self, op: str = "status", **a):
         self.h.loop = self.loop
         return self.h.voice_cloud(op, **a)

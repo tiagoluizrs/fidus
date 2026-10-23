@@ -214,9 +214,12 @@
     ]
   },
   "voice": {
-    "engine": "sapi",
-    "voice": "",
+    "engine": "kokoro",
+    "voice": "bm_george",
     "pitch": -2,
-    "rate": -1
+    "rate": 2,
+    "timbre": 0,
+    "edge": -4,
+    "pronunciations": "Alfred=Álfred"
   }
 }

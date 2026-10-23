@@ -24,11 +24,15 @@ class Item:
 
 @dataclass
 class Voice:
-    engine: str = "sapi"  # sapi | piper | descricao (voz criada por descrição) | propria (voz do próprio usuário)
+    engine: str = "sapi"  # sapi | piper | kokoro | descricao (voz criada por descrição) | propria (voz do próprio usuário)
     voice: str = ""  # parte do nome da voz (vazio = a do sistema); no Piper, o caminho do modelo .onnx
     pitch: int = 0  # -10 a 10
     rate: int = 0  # -10 a 10, somado à velocidade geral
     description: str = ""  # texto usado para criar a voz por descrição (para mostrar de novo na tela)
+    timbre: int = 0  # -10 (fechada, abafada) a 10 (aberta, brilhante); vozes locais em arquivo
+    edge: int = 0  # -10 (macia) a 10 (pontuda: presença cortante nos médios-agudos)
+    pronunciations: str = ""  # "Alfred=Al fred; ..." como o motor deve ler certas palavras
+    effect: str = ""  # "" ou "robo" (voz sintética metálica); vale para vozes geradas em arquivo (Piper, Kokoro)
 
 
 @dataclass

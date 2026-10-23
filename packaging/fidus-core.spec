@@ -3,24 +3,31 @@
 # Os imports do Fidus são preguiçosos, então o PyInstaller não os enxerga sozinho: coletamos o pacote inteiro.
 import sys
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 hidden = collect_submodules("fidus")
 hidden += collect_submodules("keyring.backends")
 if sys.platform == "win32":  # voz SAPI (pywin32)
     hidden += ["win32com.client", "pythoncom", "pywintypes"]
-hidden += ["sqlcipher3", "websockets.asyncio.server"]
+hidden += ["sqlcipher3", "websockets.asyncio.server", "kokoro_onnx", "espeakng_loader", "phonemizer"]
 
 datas = [("../fidus.example.toml", "."), ("../fidus/defaults", "fidus/defaults")]  # personagens padrão (JSON) e exemplo de config
-for pkg in ("openwakeword", "faster_whisper", "googleapiclient", "certifi"):
+for pkg in ("openwakeword", "faster_whisper", "googleapiclient", "certifi", "kokoro_onnx", "espeakng_loader", "phonemizer"):
     try:
         datas += collect_data_files(pkg)
     except Exception:  # pacote ausente nesta plataforma
         pass
 
+binaries = []
+try:  # espeak-ng (fonemas do Kokoro): biblioteca nativa que o espeakng_loader traz
+    binaries += collect_dynamic_libs("espeakng_loader")
+except Exception:
+    pass
+
 a = Analysis(
     ["core_entry.py"],
     pathex=[".."],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hidden,
     excludes=["tkinter", "matplotlib", "IPython", "pytest", "sklearn", "scipy.spatial.cKDTree", "tensorflow", "torch"],

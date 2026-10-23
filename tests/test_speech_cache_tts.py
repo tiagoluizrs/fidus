@@ -319,7 +319,7 @@ def test_vozes_de_nuvem_usam_o_provedor_da_nuvem():
     m.use(Voice(engine="descricao", voice="abc"))
     m.use(Voice(engine="propria", voice="xyz"))
     assert made == ["d", "p"]
-    assert set(ttsmod.default_factories()) == {"sapi", "piper", "descricao", "propria"}
+    assert set(ttsmod.default_factories()) == {"sapi", "piper", "kokoro", "descricao", "propria"}
 
 
 def test_sapi_fora_do_windows_da_erro_claro(monkeypatch):

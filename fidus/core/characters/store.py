@@ -68,7 +68,9 @@ class CharacterStore:
             address_fixed=addr_u.get("fixed", addr_d["fixed"]),
             address=_merge(addr_d["items"], addr_u.get("items", {})),
             phrases={m: _merge(d["phrases"].get(m, []), u.get("phrases", {}).get(m, {})) for m in MOMENTS},
-            voice=Voice(**{k: voice[k] for k in ("engine", "voice", "pitch", "rate")}, description=str(voice.get("description", ""))),
+            voice=Voice(**{k: voice[k] for k in ("engine", "voice", "pitch", "rate")}, description=str(voice.get("description", "")), effect=str(voice.get("effect", "")),
+                         timbre=int(voice.get("timbre", 0)), edge=int(voice.get("edge", 0)),
+                         pronunciations=str(voice.get("pronunciations", ""))),
         )
 
     def load_all(self) -> dict[str, Profile]:
@@ -204,7 +206,7 @@ class CharacterStore:
         self._mutate(cid, fn)
 
     def set_voice(self, cid: str, **fields) -> None:
-        allowed = {"engine", "voice", "pitch", "rate", "description"}
+        allowed = {"engine", "voice", "pitch", "rate", "description", "effect", "timbre", "edge", "pronunciations"}
         bad = set(fields) - allowed
         if bad:
             raise ValueError(f"Campos de voz inválidos: {', '.join(sorted(bad))}")
@@ -212,6 +214,9 @@ class CharacterStore:
             fields["pitch"] = max(-10, min(10, int(fields["pitch"])))
         if "rate" in fields:
             fields["rate"] = max(-10, min(10, int(fields["rate"])))
+        for k in ("timbre", "edge"):
+            if k in fields:
+                fields[k] = max(-10, min(10, int(fields[k])))
         self._mutate(cid, lambda u: u.setdefault("voice", {}).update(fields))
 
     def reset_voice(self, cid: str) -> None:

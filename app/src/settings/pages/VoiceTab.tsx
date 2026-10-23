@@ -7,9 +7,10 @@ type Mutate = (op: string, args?: Record<string, unknown>) => Promise<boolean>;
 export interface VoiceProfile {
   id: string;
   name: string;
-  voice: { engine: string; voice: string; pitch: number; rate: number; description?: string };
+  voice: { engine: string; voice: string; pitch: number; rate: number; description?: string; effect?: string; timbre?: number; edge?: number; pronunciations?: string };
 }
-type View = "sapi" | "piper" | "descricao" | "propria";
+type View = "sapi" | "piper" | "kokoro" | "descricao" | "propria";
+const ENGINES = ["sapi", "piper", "kokoro", "descricao", "propria"];
 
 interface PiperStatus { supported: boolean; installed: boolean; download_mb: number; busy: boolean; voices: { id: string; label: string; size_mb: number; installed: boolean }[] }
 interface CloudStatus { has_key: boolean; stored: boolean; has_sample: boolean; previews?: { id: string }[] }
@@ -19,8 +20,8 @@ const READ_TEXT = "Olá, eu sou o seu assistente. Hoje o dia está calmo e eu vo
 export function VoiceTab({ p, mutate }: { p: VoiceProfile; mutate: Mutate }) {
   const { call, notify } = useCore();
   const v = p.voice;
-  const [view, setView] = useState<View>((["sapi", "piper", "descricao", "propria"].includes(v.engine) ? v.engine : "sapi") as View);
-  useEffect(() => setView((["sapi", "piper", "descricao", "propria"].includes(v.engine) ? v.engine : "sapi") as View), [v.engine, p.id]);
+  const [view, setView] = useState<View>((ENGINES.includes(v.engine) ? v.engine : "sapi") as View);
+  useEffect(() => setView((ENGINES.includes(v.engine) ? v.engine : "sapi") as View), [v.engine, p.id]);
   const cloud = view === "descricao" || view === "propria";
 
   return (
@@ -29,16 +30,34 @@ export function VoiceTab({ p, mutate }: { p: VoiceProfile; mutate: Mutate }) {
         <div className="engines" role="radiogroup" aria-label="Motor de voz">
           <EngineCard on={view === "sapi"} title="Voz do sistema" text="Já vem no computador. Qualidade varia." tag="Local" onPick={() => { setView("sapi"); void mutate("set_voice", { engine: "sapi", voice: "" }); }} />
           <EngineCard on={view === "piper"} title="Piper" text="Vozes neurais que rodam no computador." tag="Local" onPick={() => { setView("piper"); if (v.engine !== "piper") void mutate("set_voice", { engine: "piper", voice: "" }); }} />
+          <EngineCard on={view === "kokoro"} title="Kokoro" text="Voz neural local com opção feminina em português." tag="Local" onPick={() => { setView("kokoro"); if (v.engine !== "kokoro") void mutate("set_voice", { engine: "kokoro", voice: "pf_dora" }); }} />
           <EngineCard on={view === "descricao"} title="Voz por descrição" text="Você descreve o tom e o sotaque e o serviço cria uma voz original." tag="Nuvem" cloud onPick={() => setView("descricao")} />
           <EngineCard on={view === "propria"} title="Sua própria voz" text="Grave sua voz, com o seu consentimento, para usar neste personagem." tag="Nuvem" cloud onPick={() => setView("propria")} />
         </div>
         {view === "sapi" && <SystemVoice voice={v.voice} mutate={mutate} />}
         {view === "piper" && <PiperPanel voice={v.engine === "piper" ? v.voice : ""} mutate={mutate} />}
+        {view === "kokoro" && <KokoroPanel voice={v.engine === "kokoro" ? v.voice : ""} mutate={mutate} />}
         {cloud && <CloudPanel kind={view as "descricao" | "propria"} p={p} />}
       </Section>
       <Section title="Tom e velocidade">
         <Slider label="Tom" value={v.pitch} min={-10} max={10} left="Mais grave" right="Mais agudo" onChange={(n) => mutate("set_voice", { pitch: n })} />
         <Slider label="Velocidade" value={v.rate} min={-10} max={10} left="Mais devagar" right="Mais rápido" onChange={(n) => mutate("set_voice", { rate: n })} />
+        {(view === "piper" || view === "kokoro") && (
+          <>
+            <Slider label="Timbre" value={v.timbre ?? 0} min={-10} max={10} left="Mais fechada" right="Mais aberta" onChange={(n) => mutate("set_voice", { timbre: n })} />
+            <Slider label="Ponta" value={v.edge ?? 0} min={-10} max={10} left="Mais macia" right="Mais pontuda" onChange={(n) => mutate("set_voice", { edge: n })} />
+          </>
+        )}
+        {(view === "piper" || view === "kokoro") && (
+          <Row label="Pronúncia" htmlFor="pronunciations" hint="Como a voz deve ler certas palavras, só na fala. Formato: palavra=como ler; outra=como ler. Ex.: Alfred=Al fred (use “Aal fred” para alongar o “Al”).">
+            <input id="pronunciations" type="text" defaultValue={v.pronunciations ?? ""} key={`${p.id}:${v.pronunciations ?? ""}`} onBlur={(e) => { if (e.target.value !== (v.pronunciations ?? "")) void mutate("set_voice", { pronunciations: e.target.value }); }} />
+          </Row>
+        )}
+        {(view === "piper" || view === "kokoro") && (
+          <Row label="Voz robótica" hint="Deixa a voz metálica e sintética, como um assistente de IA. Vale para Piper e Kokoro.">
+            <label className="check"><input type="checkbox" checked={v.effect === "robo"} onChange={(e) => void mutate("set_voice", { effect: e.target.checked ? "robo" : "" })} /><span>Usar efeito de robô</span></label>
+          </Row>
+        )}
         {cloud && <p className="muted small">Tom e velocidade valem para as vozes locais. Nas vozes da nuvem, quem manda é o serviço.</p>}
         <p className="muted small">O Fidus não clona vozes de atores nem de outras pessoas. Voz própria só com gravação e consentimento de quem fala.</p>
         <div className="actions">
@@ -115,6 +134,53 @@ function PiperPanel({ voice, mutate }: { voice: string; mutate: Mutate }) {
         ))}
       </ul>
       {st.installed && !st.voices.some((x) => x.installed) && <p className="muted small">Baixe pelo menos uma voz para usar o Piper.</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Kokoro
+
+interface KokoroStatus { supported: boolean; installed: boolean; download_mb: number; busy: boolean; voices: { id: string; label: string; installed: boolean }[] }
+
+function KokoroPanel({ voice, mutate }: { voice: string; mutate: Mutate }) {
+  const { call, subscribe, notify } = useCore();
+  const [st, setSt] = useState<KokoroStatus | null>(null);
+  const [pct, setPct] = useState<number | null>(null);
+  const load = useCallback(async () => setSt(await call<KokoroStatus>("kokoro", {}, { quiet: true })), [call]);
+  useEffect(() => void load(), [load]);
+  useEffect(() => subscribe((e) => {
+    if (e.type !== "voice_setup" || e.what !== "kokoro") return;
+    if (e.state === "progress") setPct(e.total ? Math.round(((e.done ?? 0) / e.total) * 100) : 0);
+    else {
+      setPct(null);
+      if (e.state === "error") notify("error", e.message ?? "Falha ao baixar.");
+      void load();
+    }
+  }), [subscribe, load, notify]);
+
+  if (!st) return <p className="muted small">Verificando o Kokoro…</p>;
+  if (!st.supported) return <p className="muted small">O Kokoro não está disponível nesta versão do Fidus.</p>;
+  const busy = st.busy || pct !== null;
+  return (
+    <div className="piper">
+      <Row label="Modelo do Kokoro" hint={st.installed ? "Instalado." : `Baixa cerca de ${st.download_mb} MB do GitHub, uma vez. Nada é enviado: só baixa.`}>
+        <span className="inline">
+          <Badge tone={st.installed ? "ok" : "neutral"}>{st.installed ? "Instalado" : "Não instalado"}</Badge>
+          {!st.installed && <Button disabled={busy} onClick={() => void call("kokoro", { op: "install" }).then(load)}>Instalar o Kokoro</Button>}
+          {st.installed && <Button aria-label="Remover o Kokoro" disabled={busy} onClick={() => void call("kokoro", { op: "remove" }).then(load)}>Remover</Button>}
+        </span>
+      </Row>
+      {pct !== null && <progress max={100} value={pct} aria-label="Baixando o Kokoro">{pct}%</progress>}
+      <ul className="voices" aria-label="Vozes do Kokoro">
+        {st.voices.map((x) => (
+          <li key={x.id}>
+            <label className="check">
+              <input type="radio" name="kokoro-voice" disabled={!x.installed} checked={voice === x.id} onChange={() => void mutate("set_voice", { engine: "kokoro", voice: x.id })} />
+              <span>{x.label} <span className="muted small">· português do Brasil</span></span>
+            </label>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

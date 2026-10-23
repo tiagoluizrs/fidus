@@ -15,7 +15,7 @@ from .models import Voice
 
 
 def voice_fingerprint(voice: Voice, base_rate: int = 0, voice_name: str = "") -> str:
-    return f"{voice.engine}|{voice.voice}|{voice_name}|{voice.pitch}|{voice.rate}|{base_rate}"
+    return f"{voice.engine}|{voice.voice}|{voice_name}|{voice.pitch}|{voice.rate}|{base_rate}|{voice.effect}|{voice.timbre}|{voice.edge}|{voice.pronunciations}"
 
 
 class SpeechCache:
