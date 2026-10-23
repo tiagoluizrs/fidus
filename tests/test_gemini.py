@@ -110,7 +110,7 @@ def err(code, msg=""):
     (503, "overloaded", "instável"),
 ])
 def test_erros_viram_mensagens_claras(code, msg, trecho):
-    p, _ = make([err(code, msg)])
+    p, _ = make([err(code, msg), err(500)])  # o 2º erro só é usado no 404 (a consulta da lista de modelos também falha)
     with pytest.raises(GeminiError, match=trecho):
         p.complete("s", [Message("user", text="x")], [])
 
