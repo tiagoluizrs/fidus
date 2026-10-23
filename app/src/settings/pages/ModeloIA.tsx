@@ -72,27 +72,25 @@ export function ModeloIA() {
         )}
       </Section>
 
-      {local && (
-        <Section title="Ações com o modelo local" subtitle="Por padrão o modelo local só lê (agenda, e-mails, arquivos, memória). Criar, editar, apagar e enviar ficam bloqueados.">
-          <div className="risk" role="note">
-            <strong>Riscos de liberar ações</strong>
-            <ul>
-              <li>Modelos locais pequenos erram mais ao escolher e preencher ferramentas: podem propor apagar ou enviar a coisa errada.</li>
-              <li>São mais fáceis de enganar por instruções escondidas em e-mails, mensagens e arquivos.</li>
-              <li>O Fidus continua pedindo a sua confirmação antes de qualquer ação, mas você precisa conferir o que está confirmando.</li>
-            </ul>
-          </div>
-          <Row label="Entendo os riscos acima">
-            <label className="check">
-              <input type="checkbox" checked={ack} onChange={(e) => save({ "modelo.local_acoes_ciente": e.target.checked })} />
-              <span>Li e estou de acordo</span>
-            </label>
-          </Row>
-          <Row label="Permitir ações com o modelo local" hint={ack ? "Desligue a qualquer momento." : "Marque que entende os riscos para poder ligar."}>
-            <Switch label="Permitir ações com o modelo local" checked={eff["modelo.local_acoes"] === true && ack} disabled={!ack} onChange={(v) => save({ "modelo.local_acoes": v })} />
-          </Row>
-        </Section>
-      )}
+      <Section title="Ações com o modelo local" subtitle="Vale quando o provedor é Local. Por padrão o modelo local só lê (agenda, e-mails, arquivos, memória); criar, editar, apagar e enviar ficam bloqueados.">
+        <div className="risk" role="note">
+          <strong>Riscos de liberar ações</strong>
+          <ul>
+            <li>Modelos locais pequenos erram mais ao escolher e preencher ferramentas: podem propor apagar ou enviar a coisa errada.</li>
+            <li>São mais fáceis de enganar por instruções escondidas em e-mails, mensagens e arquivos.</li>
+            <li>O Fidus continua pedindo a sua confirmação antes de qualquer ação, mas você precisa conferir o que está confirmando.</li>
+          </ul>
+        </div>
+        <Row label="Entendo os riscos acima">
+          <label className="check">
+            <input type="checkbox" checked={ack} onChange={(e) => save({ "modelo.local_acoes_ciente": e.target.checked })} />
+            <span>Li e estou de acordo</span>
+          </label>
+        </Row>
+        <Row label="Permitir ações com o modelo local" hint={ack ? "Desligue a qualquer momento." : "Marque que entende os riscos para poder ligar."}>
+          <Switch label="Permitir ações com o modelo local" checked={eff["modelo.local_acoes"] === true && ack} disabled={!ack} onChange={(v) => save({ "modelo.local_acoes": v })} />
+        </Row>
+      </Section>
 
       <Section title="Para onde vão seus dados" subtitle="Só o necessário para responder sai do computador.">
         <Row label="Sua voz e a transcrição"><Badge tone="ok">Neste computador</Badge></Row>
