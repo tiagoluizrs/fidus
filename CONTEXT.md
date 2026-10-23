@@ -80,9 +80,17 @@ CLI: `uv run fidus` (conversa), `uv run fidus "pedido"` (comando único), `--che
 - OAuth real do Google Agenda (navegador, token, "o que tenho hoje?").
 - `uv sync` com Python 3.15 no Windows (a versão estava em beta quando o lock foi gerado).
 
-## Pendência de publicação
+## Publicação
 
-O push para `origin/claude/repo-development-chfqvc` falhou com **403**: o Claude não tinha acesso de escrita ao `tiagoluizrs/fidus`. Os commits existem localmente. Correção: reconectar o GitHub em https://claude.ai/connect-github e instalar o Claude GitHub App no repositório; depois repetir `git push -u origin claude/repo-development-chfqvc`.
+Os primeiros pushes falharam com **403** (o Claude ainda não tinha acesso de escrita ao `tiagoluizrs/fidus`). Depois que o acesso foi liberado, o push funcionou: a branch `claude/repo-development-chfqvc` está no GitHub com a Etapa 1 e o `CONTEXT.md`. Nenhum PR foi aberto.
+
+## Estado atual e combinado
+
+- **Código da Etapa 1: completo** (os 7 itens do pedido), 34 testes passando e 1 pulado (chave da API).
+- **Critérios de "pronto" do `PROJETO.md` ainda NÃO confirmados de verdade.** Tudo foi testado só com mocks, em Linux.
+- **Próxima ação (manhã seguinte): o usuário testa tudo no Windows** seguindo o README (`uv sync`, `uv run fidus --check-key`, "abre o bloco de notas", "o que tenho hoje?" com o OAuth do Google, "abre o regedit" para ver o `[s/n]`, `uv run pytest`).
+- O que quebrar no teste vira correção antes de qualquer trabalho novo. A Etapa 2 só começa depois disso.
+- Se aparecer erro de dependência no `uv sync`, suspeitar primeiro do Python 3.15, que estava em beta (3.15.0b4) quando o `uv.lock` foi gerado.
 
 ## Próximo passo (não iniciado)
 
