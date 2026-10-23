@@ -30,6 +30,41 @@ class OllamaError(RuntimeError):
     pass
 
 
+class ThinkFilter:
+    """Tira o raciocínio `<think>...</think>` que modelos como o qwen3 escrevem antes de responder (pode vir em pedaços)."""
+
+    OPEN, CLOSE = "<think>", "</think>"
+
+    def __init__(self) -> None:
+        self.buf, self.inside = "", False
+
+    def feed(self, piece: str) -> str:
+        self.buf += piece
+        out = ""
+        while True:
+            if self.inside:
+                i = self.buf.find(self.CLOSE)
+                if i < 0:
+                    self.buf = self.buf[-(len(self.CLOSE) - 1):]  # guarda só o que pode ser o começo do fechamento
+                    return out
+                self.buf, self.inside = self.buf[i + len(self.CLOSE):], False
+                self.buf = self.buf.lstrip("\n")
+            else:
+                i = self.buf.find(self.OPEN)
+                if i >= 0:
+                    out += self.buf[:i]
+                    self.buf, self.inside = self.buf[i + len(self.OPEN):], True
+                    continue
+                keep = next((n for n in range(len(self.OPEN) - 1, 0, -1) if self.buf.endswith(self.OPEN[:n])), 0)
+                out += self.buf[: len(self.buf) - keep]
+                self.buf = self.buf[len(self.buf) - keep:]
+                return out
+
+    def flush(self) -> str:
+        rest, self.buf = ("" if self.inside else self.buf), ""
+        return rest
+
+
 class OllamaProvider:
     kind = "local"
     local = True  # o orquestrador limita as ações deste provedor enquanto o usuário não liberar (ver config)
@@ -56,12 +91,15 @@ class OllamaProvider:
             "messages": [{"role": "system", "content": str(system)}, *_to_api(messages)],
             "options": {"num_predict": MAX_TOKENS},
         }
+        if self.model.lower().startswith("qwen3"):
+            body["think"] = False  # sem o raciocínio longo: responde bem mais rápido, principalmente na CPU
         if tools:
             body["tools"] = [
                 {"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.parameters}}
                 for t in tools
             ]
         text: list[str] = []
+        thinking = ThinkFilter()
         held: list[str] = []  # modelos pequenos às vezes ESCREVEM a chamada de ferramenta como JSON no texto: seguramos para conferir
         calls: list[ToolCall] = []
         try:
@@ -73,8 +111,7 @@ class OllamaProvider:
                     if chunk.get("error"):
                         raise OllamaError(_friendly(str(chunk["error"]), self.model))
                     msg = chunk.get("message") or {}
-                    if msg.get("content"):
-                        piece = msg["content"]
+                    if msg.get("content") and (piece := thinking.feed(msg["content"])):
                         text.append(piece)
                         if on_text:
                             if held or ("".join(text).lstrip().startswith(("{", "`")) and tools):
@@ -93,6 +130,10 @@ class OllamaProvider:
             raise OllamaError(
                 f"Não consegui falar com o Ollama em {self.url}. Ele está aberto? (Abra o app do Ollama ou rode `ollama serve`.)"
             ) from e
+        if tail := thinking.flush():
+            text.append(tail)
+            if on_text and not held:
+                on_text(tail)
         full = "".join(text)
         if tools and not calls and (full.lstrip().startswith(("{", "`")) or "{" in full) and (as_call := _text_tool_call(full, {t.name for t in tools})):
             return Response(text="", tool_calls=[as_call])
