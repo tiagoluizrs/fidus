@@ -221,6 +221,19 @@ class ListenLoop:
         self.state = State.RECORDING
         self.manager.pause_detection()
         character = character_for(act.word, self.config.wake.default_character)
+        if act.text:  # chamou e pediu na mesma frase (reconhecimento de fala): o texto já está pronto
+            self.log.event("chamado", palavra=act.word.id, personagem=character, pontuacao=1.0, por_fala=True, deteccao_ate_gravacao_s=0.0)
+            self.out(f"Chamado por fala: {character} -> “{act.text}”")
+            self.state = State.PROCESSING
+            self.indicator.show("paused")
+            self._emit_state()
+            farewell = self.handler.handle_text(act.text, self.clock(), character)
+            if farewell or self._abort.is_set() or self.manager.muted:
+                self._sleep()
+                return
+            self.out(f"(aguardando continuação por {self.config.wake.followup_s:.0f} s)")
+            self._conversation(self.manager.open_capture(self.config.wake.preroll_ptt_s), character, self.config.wake.followup_s)
+            return
         if self.speaker and self.config.characters.speak_start:
             self.indicator.show("paused")  # enquanto fala, o microfone não grava nada
             self._emit_state("speaking")
@@ -242,9 +255,9 @@ class ListenLoop:
         )
         self._conversation(capture, character)
 
-    def _conversation(self, capture, character: str) -> None:
+    def _conversation(self, capture, character: str, wait: float | None = None) -> None:
         w = self.config.wake
-        wait = w.wait_speech_s
+        wait = w.wait_speech_s if wait is None else wait
         while True:
             ep = SilenceEndpointer(w.silence_s, w.max_record_s, wait)
             self.state = State.RECORDING if wait == w.wait_speech_s else State.FOLLOWUP

@@ -63,6 +63,6 @@ def test_modo_passivo_nao_grava_em_disco_nem_usa_a_rede(tmp_path, monkeypatch, c
 
 def test_modulos_de_escuta_nao_tem_codigo_de_gravar_arquivo_nem_de_rede():
     base = Path(voice_pkg.__file__).parent
-    for name in ("audio_manager.py", "wakeword.py", "vad.py", "listen_loop.py", "indicator.py"):
-        src = (base / name).read_text()
+    for name in ("audio_manager.py", "wakeword.py", "vad.py", "listen_loop.py", "indicator.py", "speech_wake.py", "wake_text.py"):
+        src = (base / name).read_text(encoding="utf-8")
         assert not re.search(r"\bwave\b|\bsoundfile\b|\bopen\(|write_bytes|write_text|\bsocket\b|\brequests\b|urllib", src), name

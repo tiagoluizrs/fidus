@@ -84,7 +84,7 @@ class OllamaProvider:
     ) -> Response:
         return self._chat(system, messages, tools, on_text)
 
-    def _chat(self, system, messages, tools, on_text) -> Response:
+    def _chat(self, system, messages, tools, on_text, _retry=True) -> Response:
         body = {
             "model": self.model,
             "stream": True,
@@ -127,6 +127,11 @@ class OllamaProvider:
         except urllib.error.HTTPError as e:
             raise OllamaError(_friendly(_http_error_text(e), self.model)) from e
         except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+            if _retry and not text and not isinstance(e, TimeoutError):
+                from .ollama_runner import ensure_running
+
+                if ensure_running(self.url):  # estava fechado: o Fidus abre sozinho e tenta de novo
+                    return self._chat(system, messages, tools, on_text, _retry=False)
             raise OllamaError(
                 f"Não consegui falar com o Ollama em {self.url}. Ele está aberto? (Abra o app do Ollama ou rode `ollama serve`.)"
             ) from e

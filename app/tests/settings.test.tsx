@@ -368,3 +368,14 @@ describe("Gemini: modelos que a chave enxerga", () => {
     expect(await screen.findByText(/não está disponível para a sua chave/)).toBeInTheDocument();
   });
 });
+
+describe("Como perceber o chamado", () => {
+  it("mostra a escolha, grava e avisa que precisa reiniciar", async () => {
+    const f = installFakeCore();
+    const user = await open("Voz");
+    const grupo = await screen.findByRole("radiogroup", { name: "Como perceber o chamado" });
+    expect(within(grupo).getByRole("radio", { name: "Automático" })).toHaveAttribute("aria-checked", "true");
+    await user.click(within(grupo).getByRole("radio", { name: "Por fala" }));
+    await waitFor(() => expect(f.effective["chamados.modo"]).toBe("voz"));
+  });
+});

@@ -686,7 +686,14 @@ class Handlers:
             model = model.strip()
             if not MODEL_NAME.fullmatch(model):
                 raise ValueError("Nome de modelo inválido. Use algo como llama3.2:3b.")
-            self._job(model, lambda progress: pull_model(self.config.local_url, model, progress), event="model_pull")
+            from ..providers.ollama_runner import ensure_running
+
+            def run(progress):
+                if self.config.provider == "local":
+                    ensure_running(self.config.local_url)
+                pull_model(self.config.local_url, model, progress)
+
+            self._job(model, run, event="model_pull")
             return {"started": True}
         if op != "list":
             raise ValueError(f"Operação desconhecida: {op}")
@@ -694,6 +701,13 @@ class Handlers:
         try:
             return {**base, "running": True, "models": list_models(self.config.local_url)}
         except OllamaError as e:
+            from ..providers.ollama_runner import ensure_running
+
+            if self.config.provider == "local" and ensure_running(self.config.local_url):  # escolhido e fechado: o Fidus abre
+                try:
+                    return {**base, "running": True, "models": list_models(self.config.local_url)}
+                except OllamaError as e2:
+                    e = e2
             return {**base, "running": False, "models": [], "error": str(e)}
 
     def _refresh_provider_key(self) -> None:

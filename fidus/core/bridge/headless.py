@@ -9,40 +9,19 @@ from __future__ import annotations
 
 import base64
 import binascii
-import difflib
 import queue
 import re
 import tempfile
 import threading
 import time
-import unicodedata
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
 from ..assistant import build_assistant
 from ..config import Config
+from ..voice.wake_text import match_wake  # noqa: F401 - também usado pelos testes por este caminho
 from .confirm import ConfirmBroker
-
-
-def _norm(text: str) -> str:
-    return "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
-
-
-def match_wake(text: str, names: dict[str, str]) -> tuple[str | None, str]:
-    """Procura o nome de um personagem nas primeiras palavras ("ei Alfred, que horas são"). Aceita variações de como o
-    Whisper escreve ("Alfredo", "Dona", "Jarbas"). Devolve (id do personagem ou None, o resto do pedido)."""
-    words = text.split()
-    normalized = {cid: _norm(name) for cid, name in names.items()}
-    for i, word in enumerate(words[:4]):
-        token = re.sub(r"\W", "", _norm(word))
-        if not token:
-            continue
-        hit = difflib.get_close_matches(token, list(normalized.values()), n=1, cutoff=0.72)
-        if hit:
-            cid = next(c for c, n in normalized.items() if n == hit[0])
-            return cid, " ".join(words[i + 1:]).lstrip(" ,.:;!?-—").strip()
-    return None, text
 
 
 _SENTENCE_END = re.compile(r"(?<=[.!?…])[*_\"')\]]*\s+|\n+")  # fim de frase, mesmo com **negrito** ou aspas logo depois

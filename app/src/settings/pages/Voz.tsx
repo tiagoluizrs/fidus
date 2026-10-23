@@ -55,6 +55,11 @@ export function Voz() {
           <Switch label="Escutar chamados" checked={calls.enabled} onChange={(v) => void setCalls(v)} />
         </Row>
         <div className="chips-row">{characters.map((c) => <span key={c.id} className="chip">{c.call}</span>)}</div>
+        <Row label="Como perceber o chamado" hint="Por fala: o Fidus ouve, entende com o Whisper no seu computador e só age se a frase começar com o nome (“ei Alfred…”). Não precisa treinar nada, mas usa mais processador. Por modelo: usa as palavras de ativação treinadas (docs/WAKEWORDS.md), mais leve. Automático usa os modelos se existirem e, senão, a fala.">
+          <Segmented label="Como perceber o chamado" value={String(s("chamados.modo") ?? "auto")} onChange={(v) => save({ "chamados.modo": v })}
+            options={[{ value: "auto", label: "Automático" }, { value: "voz", label: "Por fala" }, { value: "modelo", label: "Por modelo" }]} />
+        </Row>
+        {restartNeeded.includes("chamados.modo") && <p className="notice">A nova forma de perceber o chamado vale depois de reiniciar o Fidus.</p>}
         <Slider label="Sensibilidade" value={Number(s("chamados.sensibilidade") ?? 60)} left="Menos falsos alarmes" right="Acorda mais fácil"
           onChange={(v) => save({ "chamados.sensibilidade": v })} />
         <Row label="Aceitar também o atalho (segurar e falar)">

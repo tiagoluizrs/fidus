@@ -50,6 +50,13 @@ class VoiceLoop:
         if not text:
             self.out("(não ouvi nada)")
             return False
+        return self.handle_text(text, speech_end, personagem, t)
+
+    def handle_text(self, text: str, speech_end: float, personagem: str = "alfred", t: Timings | None = None) -> bool:
+        """Atende um pedido já em texto (a fala foi transcrita antes, ex.: no chamado por reconhecimento de fala)."""
+        if t is None:
+            t = Timings(speech_end=speech_end)
+            t.text_ready = time.perf_counter()
         self.out(f"você> {text}")
         if self.speaker and self.ui.has_clients:
             self.ui.emit("character", **self.speaker.persona.ui_profile(personagem))
