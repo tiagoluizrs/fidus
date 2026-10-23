@@ -2,11 +2,11 @@
 
 Assistente de voz para desktop (Windows), "seu conselheiro de IA". Visão, arquitetura e roteiro em [`PROJETO.md`](PROJETO.md).
 
-**Estado atual: Etapa 1, núcleo no terminal.** Sem voz, sem interface e sem Electron ainda.
+**Estado atual: Etapa 2B (palavra de ativação) sobre a voz push-to-talk (Etapa 2) e o núcleo (Etapa 1).** Sem interface e sem Electron ainda. Personalidade dos personagens vem na etapa 3.
 
 ## Instalação (Windows 10/11, PowerShell)
 
-O projeto usa Python **3.15** gerenciado pelo [uv](https://docs.astral.sh/uv/). O uv baixa o Python certo sozinho.
+O projeto usa Python **3.12** gerenciado pelo [uv](https://docs.astral.sh/uv/) (a 3.15 não serve: `faster-whisper`/`ctranslate2`, `onnxruntime` e `pywin32` não têm pacote para ela). O uv baixa o Python certo sozinho.
 
 ```powershell
 # 1. instalar o uv (uma vez)
@@ -71,8 +71,13 @@ fidus/core/
   untrusted.py      conteúdo externo como dado delimitado (<dado_externo>)
   actionlog.py      log JSONL local
   config.py, secrets.py
-  providers/        interface única (base.py) + adaptador da Anthropic
+  metrics.py        latências e memória (Etapa 2)
+  providers/        interface única (base.py) + adaptador da Anthropic (com streaming)
+  voice/            audio, hotkey, stt (Whisper), tts (SAPI), sentences, confirm, loop (push-to-talk)
+                    audio_manager, wakeword, vad, characters, indicator, listen_loop, bench (palavra de ativação)
   tools/            um arquivo por ferramenta: abrir_app, buscar_arquivos, ler_agenda_google
+docs/WAKEWORDS.md   guia para treinar e instalar os modelos de palavra de ativação
+models/wakewords/   seus modelos .onnx (fora do Git)
 docs/design/        telas do canvas de design (referência para a etapa 5; não usadas ainda)
 ```
 
@@ -89,18 +94,185 @@ docs/design/        telas do canvas de design (referência para a etapa 5; não 
 
 ## Desempenho
 
-Imports pesados (`anthropic`, Google, `keyring`) acontecem só quando usados, nunca ao importar o núcleo. Whisper e TTS (etapa 2) seguirão a mesma regra.
+Imports pesados (`anthropic`, Google, `keyring`, `faster-whisper`, `sounddevice`, `pynput`, `psutil`, `win32com`) acontecem só quando usados, nunca ao importar o núcleo (conferido com `python -X importtime`). O Whisper só carrega ao iniciar `fidus voice`, uma vez, e fica na memória.
 
 ## O que foi validado e o que falta validar no Windows
 
-Desenvolvido e testado em Linux (34 testes passando; o teste da chave da API pula sem `ANTHROPIC_API_KEY`). **Precisa ser validado no Windows:**
+Desenvolvido e testado em Linux (133 testes passando; o teste da chave da API pula sem `ANTHROPIC_API_KEY`). **Precisa ser validado no Windows:**
 
 - [ ] `abrir_app`: o lançamento real (`os.startfile`) é mockado nos testes. Conferir `abre o bloco de notas` e `abre a calculadora`.
 - [ ] `keyring` no Gerenciador de Credenciais do Windows (os testes usam um módulo falso).
 - [ ] `ler_agenda_google` com OAuth real (os testes usam a API mockada), incluindo o fluxo de autorização no navegador.
-- [ ] `uv sync` com Python 3.15 no Windows: a 3.15 ainda estava em beta (3.15.0b4) quando o `uv.lock` foi gerado, então conferir se todas as dependências têm wheel para Windows.
+- [ ] `uv sync` com Python 3.12 no Windows (o `uv.lock` foi gerado no Linux; as dependências de voz foram checadas para Windows com `uv pip compile --python-platform windows`).
 - [ ] `uv run fidus --check-key` com a sua chave.
+- [ ] **Palavra de ativação (Etapa 2B):** microfone real no `AudioManager`, `listen`, treino e instalação dos 3 modelos, alarmes falsos e medições no Windows (ver o checklist da seção).
+- [ ] **Voz (Etapa 2):** microfone real (`sounddevice`), atalho global (`pynput`), SAPI (`pywin32`), download e uso do Whisper, streaming real da API e as medições. Tudo isso usa mocks nos testes; ver o checklist da seção Voz.
+
+## Voz (Etapa 2)
+
+```powershell
+uv run fidus mics                # lista os microfones (marca o padrão e o escolhido)
+uv run fidus say "Olá, sou o Fidus"   # testa a voz do sistema
+uv run fidus voice               # laço de voz: segure o atalho, fale, solte
+```
+
+`uv run fidus` e `uv run fidus "pedido"` (texto) continuam iguais, agora com a resposta aparecendo em streaming.
+
+**Fluxo:** segurar `Ctrl+Alt+Espaço` grava; soltar envia -> faster-whisper transcreve -> o orquestrador (Claude, com streaming) responde -> a voz fala **frase a frase** enquanto o texto ainda chega. Falar por cima (apertar o atalho de novo) interrompe a voz.
+
+**Escolhas técnicas**
+
+- **Atalho global: `pynput`.** Usa o gancho de teclado do Windows e avisa tecla pressionada e solta sem exigir administrador (o `RegisterHotKey` do Windows não avisa quando solta). O atalho não é "engolido": o aplicativo em foco também recebe as teclas.
+- **Áudio: `sounddevice`**, 16 kHz, mono. O fluxo do microfone só fica aberto enquanto você segura o atalho.
+- **Transcrição: faster-whisper**, modelo `small`, `int8`, CPU, idioma pt, filtro de silêncio (VAD), `beam_size=1`. Modelo carregado uma vez ao iniciar `fidus voice`. O áudio fica **só na memória**; salvar em disco (`salvar_audio_debug`) vem desligado. A única rede do Whisper é o **download do modelo na primeira vez** (~480 MB, do Hugging Face, para `~\.cache\huggingface`); depois roda offline.
+- **Voz: SAPI** (voz do Windows) via `pywin32`, atrás da interface `TTSProvider` (`fidus/core/voice/tts.py`), para trocar por Piper depois. Usa uma voz pt-BR se houver; senão, a padrão do sistema (o `fidus say` mostra qual).
+- **Confirmação por voz:** quando uma ação pede `[s/n]`, o Fidus pergunta falando e escuta "sim" ou "não" (tempo limite configurável). Resposta confusa, ambígua ("pode não"), silêncio ou erro no microfone **caem no teclado**; nunca aprova sozinho.
+
+### Configuração da voz (`fidus.toml`)
+
+```toml
+[voz]
+atalho = "ctrl+alt+space"   # ex.: "f9", "ctrl+shift+space"
+microfone = ""              # vazio = padrão; ou índice / parte do nome (veja `fidus mics`)
+modelo_whisper = "small"    # base (mais leve) | small | medium (mais preciso)
+compute_type = "int8"
+dispositivo = "cpu"
+idioma = "pt-BR"
+velocidade_voz = 0          # -10 a 10
+tempo_confirmacao_s = 8
+salvar_audio_debug = false  # true grava .wav em ~\.fidus\debug_audio (só para depurar)
+```
+
+### Medições (no log)
+
+Em `~\.fidus\actions.log` (JSON por linha, sem texto do que você falou):
+
+- `memoria_whisper`: `rss_antes_mb`, `rss_depois_mb` e `carga_s` (uma vez, ao carregar o modelo).
+- `metricas_pedido`, a cada pedido falado: `a_fala_ate_texto_s` (soltar o atalho -> texto), `b_texto_ate_primeira_palavra_s` (texto -> primeira palavra do modelo), `c_fala_ate_inicio_da_voz_s` (soltar o atalho -> a voz começar) e `rss_mb`.
+
+Ver rápido: `Select-String '"metricas_pedido"|"memoria_whisper"' $HOME\.fidus\actions.log`
+
+Medido no ambiente de desenvolvimento (Linux, sem modelo): o núcleo importado ocupa ~16 MB; só importar o `faster_whisper` leva a ~64 MB. **Latência e memória reais com o modelo carregado não puderam ser medidas lá (download bloqueado, sem microfone): meça no seu PC.**
+
+### Checklist manual (Windows)
+
+Marque conforme for testando:
+
+- [ ] `uv sync` conclui sem erro (Python 3.12).
+- [ ] `uv run pytest`: tudo passa.
+- [ ] `uv run fidus mics` lista o seu microfone; ao pôr `microfone = "..."` no `fidus.toml`, ele aparece como `[escolhido no fidus.toml]`.
+- [ ] `uv run fidus say "Olá, sou o Fidus"` fala em português; anote a voz que aparece em `Voz:`. Se disser "sem voz pt-BR instalada", instale o idioma em Configurações > Hora e idioma > Fala.
+- [ ] `uv run fidus voice`: primeira execução baixa o modelo; depois mostra "Segure ctrl+alt+space...".
+- [ ] Segurar o atalho, dizer "que horas são?" (ou "abre o bloco de notas") e soltar: aparece `você> ...` com o texto certo e a resposta é falada.
+- [ ] A voz começa **antes** de o texto completo terminar (frase a frase).
+- [ ] Apertar o atalho enquanto ele fala interrompe a voz.
+- [ ] Toque rápido no atalho (< 0,3 s) é ignorado.
+- [ ] O atalho funciona sem abrir o PowerShell como administrador.
+- [ ] Pedir "abre o regedit": o Fidus pergunta **falando**; responder "sim" executa e "não" cancela.
+- [ ] Na confirmação, ficar em silêncio ou dizer algo confuso: cai no `[s/n]` do teclado.
+- [ ] Desconectar o microfone / usar um índice errado: mensagem clara, sem travar.
+- [ ] `actions.log` tem `memoria_whisper` e `metricas_pedido`; anote os números (latências a, b, c e `rss_depois_mb`).
+- [ ] Nenhum `.wav` em `~\.fidus` (a menos que `salvar_audio_debug = true`).
+- [ ] Com o Gerenciador de Tarefas aberto, conferir a memória do Python com o modelo carregado e em repouso.
+
+## Palavra de ativação (Etapa 2B)
+
+```powershell
+uv run fidus listen                    # laço completo: "ei Alfred" ou o atalho
+uv run fidus wake-test                 # pontuação de cada palavra em tempo real (ajustar limiares)
+uv run fidus wake-bench                # mede CPU e memória da escuta passiva por 60 s
+# para validar o encanamento ANTES dos seus modelos, com o modelo pronto "hey jarvis" (SOMENTE TESTE):
+uv run fidus listen --somente-teste
+uv run fidus wake-test --somente-teste
+```
+
+**Os modelos próprios ("ei alfred", "ei donna", "ei jarbis") precisam ser treinados por você.** Passo a passo em
+[`docs/WAKEWORDS.md`](docs/WAKEWORDS.md); os arquivos vão em `models/wakewords/`. Sem eles, o `listen` avisa, só
+desativa aquela palavra e o push-to-talk continua funcionando.
+
+> **"Somente teste":** `hey_jarvis` é um modelo pronto do openWakeWord (licença CC BY-NC-SA 4.0, uso não comercial),
+> usado só para validar o encanamento. Fica desativado na configuração e só liga com `--somente-teste`.
+
+**Fluxo do `listen`:** escuta passiva -> "ei <nome>" (ou atalho) -> *sinal opcional* -> grava até **1,2 s de silêncio**
+(máx. 15 s, VAD Silero local) -> Whisper -> orquestrador -> voz -> **aguarda 5 s por uma continuação** (sem chamar
+de novo) -> volta a dormir. O personagem chamado (`alfred`, `donna`, `jarbis`; atalho = `alfred`) é passado ao
+orquestrador como `personagem_ativo` e registrado no log; sem personalidade ainda.
+
+**Um fluxo de microfone só** (`AudioManager`): o detector e as gravações (chamado, atalho e resposta "sim/não" da
+confirmação por voz) compartilham o mesmo fluxo, com buffer circular de ~2 s (pré-roll) **só em memória**. Enquanto
+o Fidus responde, a detecção fica pausada (não escuta a própria voz). Falar por cima, com o atalho, interrompe a voz.
+
+**Indicador de microfone no terminal** (sempre visível, muda a cada transição):
+
+| Estado | Texto |
+| --- | --- |
+| Escuta passiva | `[MICROFONE: ESCUTA PASSIVA] só aguardando o chamado; nada é gravado nem enviado` |
+| Gravando | `[MICROFONE: GRAVANDO] o áudio vai ser transcrito neste computador` |
+| Respondendo | `[MICROFONE: ABERTO, ESCUTA PAUSADA] respondendo` |
+| Silenciado | `[MICROFONE: SILENCIADO] fechado; ninguém está ouvindo` |
+
+`Ctrl+Alt+M` (configurável: `atalho_silenciar`) **fecha o microfone de verdade** e abre de novo.
+
+**Privacidade:** na escuta passiva nada é gravado em disco nem enviado à rede (há testes para isso, inclusive um que
+bloqueia `open()` de escrita e `socket.connect`). A única rede do detector é o **download dos arquivos de modelo**
+(não de áudio), do GitHub do openWakeWord, na primeira vez. O `salvar_audio_debug` da Etapa 2 só atua depois do
+chamado, e vem desligado.
+
+### Configuração (`fidus.toml`, seção `[chamados]`)
+
+Veja `fidus.example.toml`. Resumo: `intervalo_s` (2,0), `silencio_fim_s` (1,2), `max_gravacao_s` (15),
+`esperar_fala_s` (5), `continuacao_s` (5), `som_ao_ouvir` (false), `atalho_silenciar`, e uma tabela por palavra
+(`modelo`, `personagem`, `limiar`, `ativa`, `somente_teste`). Limiar é **por palavra**.
+
+### Medições da escuta passiva
+
+`uv run fidus wake-bench` (60 s, em silêncio) imprime e grava no `actions.log` (evento `bench_escuta_passiva`): CPU
+(% de um núcleo e da máquina), memória antes e depois de carregar os modelos, média e máximo, tempo de inferência por
+frame (cada frame = 80 ms), frames descartados e o tempo **detecção -> gravação aberta**. O `listen` também grava, a cada
+chamado, o evento `chamado` com `deteccao_ate_gravacao_s`.
+
+Medido no ambiente de desenvolvimento (Linux, CPU de servidor, modelo real `hey_jarvis` em ONNX, **áudio sintético**,
+sem microfone; `wake-bench --somente-teste --sem-microfone`):
+
+| Medida (60 s, 1 modelo, só escuta passiva) | Resultado |
+| --- | --- |
+| CPU do processo | **7,6 % de um núcleo** (1,9 % da máquina) |
+| Memória do processo | 29,7 MB antes -> **105 MB** com o runtime e o modelo; média 110,8 MB, máximo 111,3 MB |
+| Inferência por frame de 80 ms | média **6,3 ms** (7,9 % do orçamento), máxima 28 ms |
+| Frames descartados | 0 de 751 |
+| Detecção -> gravação aberta (código do Fidus) | mediana **0,04 ms**, p99 0,32 ms, máx. 0,57 ms (300 repetições) |
+
+A memória cai de ~189 MB para ~105 MB porque o Fidus **não importa** o módulo de verificadores do openWakeWord
+(`fidus/core/voice/oww.py`), que arrasta scikit-learn e scipy. O VAD Silero soma ~7 MB; o Whisper `small` entra à
+parte (o `listen` o carrega ao iniciar). Somando tudo, a memória em repouso do `listen` será medida no seu PC.
+
+**Não medido (precisa do seu PC):** os mesmos números no Windows com microfone real; e o tempo "ei <nome>" -> início
+da gravação com voz de verdade, porque ele inclui o atraso do próprio modelo depois que você termina a palavra
+(o `deteccao_ate_gravacao_s` mede só o trecho do Fidus, da detecção à gravação aberta).
+
+### Checklist manual (Windows)
+
+- [ ] `uv sync` e `uv run pytest` passam.
+- [ ] `uv run fidus wake-test --somente-teste`: dizer "hey Jarvis" faz a pontuação subir e aparece `>>> ATIVOU`.
+- [ ] `uv run fidus listen --somente-teste`: "hey Jarvis" -> começa a gravar (indicador `GRAVANDO`) -> fale um pedido
+      e fique 1,2 s em silêncio -> transcreve, responde falando, e aparece "aguardando continuação por 5 s".
+- [ ] Continuação: dentro dos 5 s, falar de novo **sem** chamar o nome: ele atende. Ficar quieto: volta a dormir.
+- [ ] Chamar e não falar nada: "(sem fala; voltando a dormir)".
+- [ ] `som_ao_ouvir = true` toca um bipe ao começar a ouvir; `false` (padrão) fica mudo.
+- [ ] O indicador mostra ESCUTA PASSIVA, GRAVANDO, ABERTO/PAUSADA e SILENCIADO nos momentos certos.
+- [ ] `Ctrl+Alt+M` silencia (o ícone de microfone do Windows some, atalho e chamado param de funcionar) e reativa.
+- [ ] Atalho `Ctrl+Alt+Espaço` continua funcionando no `listen`, inclusive interrompendo a voz.
+- [ ] "Abre o regedit" no `listen`: a pergunta de confirmação é falada e o "sim/não" é ouvido pelo mesmo microfone.
+- [ ] Remover/renomear um `.onnx`: só aquela palavra é desativada, com aviso no terminal e evento
+      `wakeword_desativada` no `actions.log`; o push-to-talk segue funcionando.
+- [ ] O log registra `chamado` com `personagem` e `deteccao_ate_gravacao_s`.
+- [ ] Nenhum `.wav` em `~\.fidus` e nenhum arquivo novo na pasta do projeto depois de uma sessão de escuta.
+- [ ] `uv run fidus wake-bench`: anote CPU, memória e inferência por frame (compare com a tabela acima).
+- [ ] **Teste de alarmes falsos, 15 minutos:** `uv run fidus listen` com TV ou conversa ao fundo, sem falar o nome.
+      Conte os eventos `chamado` no `actions.log`: `Select-String '"type": "chamado"' $HOME\.fidus\actions.log`.
+      Alvo: 0 (no máximo 1). Se passar, suba o `limiar` da palavra (veja `docs/WAKEWORDS.md`, seção 4) e repita.
+- [ ] Repetir o teste de 15 min dizendo um nome parecido ou o nome da pessoa na TV; anotar os falsos.
 
 ## Fora do escopo desta etapa
 
-Voz, Whisper, TTS, detector "ei Alfred", personagens, memória, Gmail/Slack, interface e streaming de respostas. Ver o roteiro no `PROJETO.md`.
+Personalidade dos personagens e memória (etapa 3), Gmail/Slack, interface, Piper e provedor Ollama. Ver o roteiro no `PROJETO.md`.

@@ -225,3 +225,7 @@ fidus.toml
 .fidus/
 credentials.json
 token.json
+
+# Modelos de palavra de ativação treinados (pessoais)
+models/wakewords/*.onnx
+models/wakewords/*.tflite

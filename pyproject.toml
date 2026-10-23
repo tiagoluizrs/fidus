@@ -3,13 +3,21 @@ name = "fidus"
 version = "0.1.0"
 description = "Fidus: assistente de voz para desktop (núcleo no terminal)"
 readme = "README.md"
-requires-python = ">=3.15"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "anthropic>=0.40",
     "python-dotenv>=1.0",
     "keyring>=25",
     "google-api-python-client>=2.100",
     "google-auth-oauthlib>=1.2",
+    # Etapa 2 (voz). Todos importados só quando usados.
+    "numpy>=1.26",
+    "sounddevice>=0.5",
+    "faster-whisper>=1.1",
+    "pynput>=1.7",
+    "psutil>=6",
+    "pywin32>=306; sys_platform == 'win32'",
+    "openwakeword>=0.6",
 ]
 
 [project.scripts]
@@ -27,3 +35,8 @@ packages = ["fidus"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+# openwakeword exige tflite-runtime no Linux, que não tem pacote para Python 3.12.
+# O Fidus usa o runtime ONNX (único disponível no Windows), então a exigência é descartada.
+override-dependencies = ["tflite-runtime; python_version < '3.0'"]

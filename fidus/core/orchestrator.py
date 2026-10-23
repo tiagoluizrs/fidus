@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from .actionlog import ActionLog
 from .config import Config
 from .permissions import Confirmer, ask, needs_confirmation
-from .providers.base import Message, Provider, ToolCall, ToolResult, ToolSpec
+from .providers.base import Message, Provider, Response, ToolCall, ToolResult, ToolSpec
 from .tools.base import Tool, ToolError
 from .tools.registry import load_tools
 from .untrusted import TAG, wrap
@@ -36,19 +38,41 @@ class Orchestrator:
         self.tools = tools if tools is not None else load_tools()
         self.log = log or ActionLog(config.log_path)
         self.history: list[Message] = []
+        self.personagem_ativo = "alfred"
 
     def _specs(self) -> list[ToolSpec]:
         return [ToolSpec(t.name, t.description, t.parameters) for t in self.tools.values()]
 
-    def run(self, user_text: str) -> str:
-        """Atende um comando. O limite de chamadas vale por comando, não por sessão."""
+    def _complete(self, tools: list[ToolSpec], on_text: Callable[[str], None] | None) -> Response:
+        if on_text is None:
+            return self.provider.complete(SYSTEM_PROMPT, self.history, tools)
+        stream = getattr(self.provider, "complete_stream", None)
+        if stream is not None:
+            return stream(SYSTEM_PROMPT, self.history, tools, on_text)
+        response = self.provider.complete(SYSTEM_PROMPT, self.history, tools)  # provedor sem streaming
+        if response.text:
+            on_text(response.text)
+        return response
+
+    def run(
+        self, user_text: str, on_text: Callable[[str], None] | None = None, personagem_ativo: str = "alfred"
+    ) -> str:
+        """Atende um comando. O limite de chamadas vale por comando, não por sessão.
+
+        Com `on_text`, o texto do modelo é entregue em trechos, conforme chega (streaming).
+        `personagem_ativo` é quem foi chamado; a personalidade dele só entra na etapa 3.
+        """
+        self.personagem_ativo = personagem_ativo
+        self.log.event("personagem", personagem=personagem_ativo)
         self.history.append(Message("user", text=user_text))
         calls_made = 0
         while True:
-            response = self.provider.complete(SYSTEM_PROMPT, self.history, self._specs())
+            response = self._complete(self._specs(), on_text)
             self.history.append(Message("assistant", text=response.text, tool_calls=response.tool_calls))
             if not response.tool_calls:
                 return response.text
+            if on_text and response.text:
+                on_text("\n")  # separa o que veio antes da ferramenta do que vem depois
 
             results: list[ToolResult] = []
             limit_hit = False
@@ -63,7 +87,7 @@ class Orchestrator:
             self.history.append(Message("user", tool_results=results))
 
             if limit_hit:  # uma última chamada sem ferramentas, só para o modelo explicar
-                final = self.provider.complete(SYSTEM_PROMPT, self.history, [])
+                final = self._complete([], on_text)
                 self.history.append(Message("assistant", text=final.text))
                 return final.text or "Parei porque atingi o limite de chamadas de ferramenta neste comando."
 
