@@ -227,6 +227,13 @@ class SapiTTS(QueuedTTS):
             self._voice.AudioOutputStream = previous
         return True
 
+    def list_voices(self) -> list[str]:
+        def names() -> list[str]:
+            vs = self._voice.GetVoices()
+            return [str(vs.Item(i).GetDescription()) for i in range(vs.Count)]
+
+        return self._call(names)
+
     def _stop_playback(self) -> None:
         try:
             import winsound
@@ -349,6 +356,15 @@ class TTSManager:
 
     def synthesize(self, text: str, path: Path) -> bool:
         return self._cur().synthesize(text, path)
+
+    def list_voices(self, engine: str = "sapi") -> list[str]:
+        """Vozes instaladas do motor (só o SAPI lista). Lista vazia se o motor não está disponível."""
+        try:
+            if engine not in self._providers:
+                self._providers[engine] = self.factories[engine](Voice(engine=engine))
+            return list(getattr(self._providers[engine], "list_voices", lambda: [])())
+        except Exception:
+            return []
 
     def wait_idle(self, timeout: float | None = None) -> None:
         for p in self._providers.values():

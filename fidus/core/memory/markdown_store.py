@@ -17,6 +17,7 @@ from datetime import date
 from pathlib import Path
 
 SECTIONS = ("perfil", "rotinas", "contatos")
+SOURCES = ("usuario", "aprendida")
 TAGS = ("geral", "pessoal", "trabalho")
 MAX_TEXT = 500
 _ITEM = re.compile(r"^(?P<indent>\s*)[-*]\s+(?P<text>.*?)(?:\s*<!--\s*(?P<meta>.*?)\s*-->)?\s*$")
@@ -31,6 +32,7 @@ class Entry:
     text: str
     tag: str | None = None
     ts: str = ""
+    src: str = "usuario"  # usuario (você disse) | aprendida (o Fidus guardou sozinho)
 
 
 def normalize(text: str) -> str:
@@ -87,7 +89,7 @@ class MarkdownMemory:
             meta = dict(_META.findall(m.group("meta") or ""))
             text = m.group("text").strip()
             eid = meta.get("id") or "x" + hashlib.sha1(text.encode()).hexdigest()[:7]
-            entries.append(Entry(eid, section, text, meta.get("tag"), meta.get("ts", "")))
+            entries.append(Entry(eid, section, text, meta.get("tag"), meta.get("ts", ""), meta.get("src", "usuario")))
         return lines, entries
 
     def list(self, section: str | None = None, tag: str | None = None) -> list[Entry]:
@@ -117,7 +119,7 @@ class MarkdownMemory:
     # ---------- escrita ----------
 
     def _format(self, e: Entry) -> str:
-        meta = f"id={e.id}" + (f" tag={e.tag}" if e.tag else "") + (f" ts={e.ts}" if e.ts else "")
+        meta = f"id={e.id}" + (f" tag={e.tag}" if e.tag else "") + (f" ts={e.ts}" if e.ts else "") + (f" src={e.src}" if e.src != "usuario" else "")
         return f"- {e.text} <!-- {meta} -->"
 
     def _write(self, section: str, lines: list[str]) -> None:
@@ -127,7 +129,7 @@ class MarkdownMemory:
         tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
         tmp.replace(path)
 
-    def add(self, section: str, text: str, tag: str | None = None) -> Entry:
+    def add(self, section: str, text: str, tag: str | None = None, source: str = "usuario") -> Entry:
         section, text = clean_section(section), " ".join(text.split())[:MAX_TEXT]
         if not text:
             raise ValueError("O texto não pode ser vazio.")
@@ -136,7 +138,7 @@ class MarkdownMemory:
         lines, _ = self._parse(section)
         if not lines:
             lines = [f"# {section.split('/')[-1].capitalize()}", ""]
-        entry = Entry(secrets.token_hex(4), section, text, tag, date.today().isoformat())
+        entry = Entry(secrets.token_hex(4), section, text, tag, date.today().isoformat(), source if source in SOURCES else "usuario")
         self._write(section, lines + [self._format(entry)])
         return entry
 

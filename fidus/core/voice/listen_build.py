@@ -32,7 +32,7 @@ def build_listen_loop(config: Config, include_test: bool = False, events=None, b
     from .vad import SilenceEndpointer, capture_utterance, load_vad
     from .wakeword import ActivationGate, DetectorRunner, load_detector
 
-    log = ActionLog(config.log_path)
+    log = ActionLog(config.log_path, config)
     wake = config.wake
     manager = make_manager(config)
     ui = events or NullEvents()  # interface (Electron), se houver
@@ -57,6 +57,8 @@ def build_listen_loop(config: Config, include_test: bool = False, events=None, b
         print("Nenhuma palavra de ativação ativa; só o push-to-talk. Veja docs/WAKEWORDS.md.")
 
     def speak_and_wait(text: str) -> None:
+        if not config.voice.speak_replies:  # "Responder em voz alta" desligado: a pergunta vai só para a tela
+            return
         tts.speak(text)
         tts.wait_idle()
 
