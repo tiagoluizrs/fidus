@@ -14,6 +14,7 @@
   uv run fidus user show|set      seu nome (usado nas falas)
   uv run fidus secrets set|get|delete|list|migrate   chaves no Gerenciador de Credenciais do Windows
   uv run fidus accounts list|connect|disconnect|channels   Google Agenda, Gmail e Slack
+  uv run fidus daemon [--simulado]   núcleo em segundo plano para a interface Electron (o app inicia este comando)
   uv run fidus --check-key        testa a chave da Anthropic
 """
 
@@ -22,7 +23,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-COMMANDS = {"voice", "say", "mics", "listen", "wake-test", "wake-bench", "character", "memory", "user", "secrets", "accounts"}
+COMMANDS = {"voice", "say", "mics", "listen", "wake-test", "wake-bench", "character", "memory", "user", "secrets", "accounts", "daemon"}
 
 
 def _cmd_mics() -> int:
@@ -143,6 +144,11 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] in COMMANDS:
         cmd, rest = argv[0], argv[1:]
+        if cmd == "daemon":
+            from .core.bridge.daemon import run_daemon
+            from .core.config import load_config
+
+            return run_daemon(load_config(), simulated="--simulado" in rest, include_test="--somente-teste" in rest, watch_stdin="--stdin-watch" in rest)
         if cmd in {"secrets", "accounts"}:
             from . import cli_accounts
 
