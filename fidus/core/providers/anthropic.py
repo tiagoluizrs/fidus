@@ -11,6 +11,9 @@ MAX_TOKENS = 1024
 
 
 class AnthropicProvider:
+    kind = "claude"
+    local = False
+
     def __init__(self, model: str, api_key: str | None = None):
         self.model = model
         self._api_key = api_key

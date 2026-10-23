@@ -514,6 +514,19 @@ app\resources-core\fidus-core\fidus-core.exe selftest   # confere as bibliotecas
 - Verificado em Linux: build do núcleo congelado, `selftest`, o app empacotado (`electron-builder --dir`) iniciando o núcleo
   congelado e conectando. O instalador `.exe` e a instalação limpa precisam ser feitos no Windows (checklist no LANCAMENTO).
 
+## Modelo local (Ollama)
+
+Em Configurações > Modelo de IA, escolha **Local** para usar o [Ollama](https://ollama.com) neste computador: nada do seu
+pedido sai da máquina. Instale o Ollama, baixe um modelo que suporte ferramentas (`ollama pull qwen3:8b`) e escolha-o na
+lista (a tela mostra se o Ollama está aberto).
+
+- **Só leitura por padrão:** modelos locais pequenos erram mais ao usar ferramentas e se deixam enganar com mais
+  facilidade. Com o local, agenda, e-mail, arquivos e memória só são **lidos**; criar, editar, apagar e enviar ficam bloqueados.
+- **Liberar ações:** a tela mostra os riscos e exige **o toggle e a caixa "li e estou de acordo"**. Mesmo liberado, o Fidus
+  continua pedindo a sua confirmação antes de cada ação (a regra fica fora do modelo). Desmarcar a ciência desliga a liberação.
+- O endereço do Ollama só pode ser da própria máquina (`127.0.0.1`/`localhost`). Sem dependência nova: usa só a biblioteca padrão.
+- Não validado com um Ollama real nesta sessão (os testes usam um servidor falso): conferir no PC com o seu modelo.
+
 ## Docker (desenvolvimento e testes) e instalador por CI
 
 - **Docker é só para desenvolver/testar em Linux** (pytest, testes do app, núcleo simulado + Electron em tela virtual).

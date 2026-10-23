@@ -117,3 +117,36 @@ describe("tela Personagem", () => {
     expect(await screen.findAllByText(/Donna/)).not.toHaveLength(0);
   });
 });
+
+describe("tela Modelo de IA (Ollama)", () => {
+  it("escolher Local mostra os modelos instalados e o aviso de riscos; ações começam bloqueadas", async () => {
+    const f = installFakeCore();
+    const user = await open("Modelo de IA");
+    await user.click(await screen.findByRole("radio", { name: /Local/ }));
+    await waitFor(() => expect(f.effective["modelo.provedor"]).toBe("local"));
+    expect(await screen.findByText("Ollama aberto")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "llama3.1:8b" })).toBeInTheDocument();
+    expect(screen.getByText(/Riscos de liberar ações/)).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /Permitir ações com o modelo local/ })).toBeDisabled(); // sem o check, não liga
+  });
+
+  it("só liga as ações depois de marcar que entende os riscos; desmarcar desliga de novo", async () => {
+    const f = installFakeCore({ effective: { "modelo.provedor": "local" } });
+    const user = await open("Modelo de IA");
+    const sw = await screen.findByRole("switch", { name: /Permitir ações com o modelo local/ });
+    expect(sw).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /Li e estou de acordo/ }));
+    await waitFor(() => expect(f.effective["modelo.local_acoes_ciente"]).toBe(true));
+    await user.click(await screen.findByRole("switch", { name: /Permitir ações com o modelo local/ }));
+    await waitFor(() => expect(f.effective["modelo.local_acoes"]).toBe(true));
+    await user.click(screen.getByRole("checkbox", { name: /Li e estou de acordo/ }));
+    await waitFor(() => expect(f.effective["modelo.local_acoes"]).toBe(false));
+  });
+
+  it("Ollama fechado avisa e ensina o comando", async () => {
+    installFakeCore({ effective: { "modelo.provedor": "local" }, ollamaRunning: false });
+    await open("Modelo de IA");
+    expect(await screen.findByText("Ollama fechado")).toBeInTheDocument();
+    expect(screen.getByText(/ollama pull qwen3:8b/)).toBeInTheDocument();
+  });
+});

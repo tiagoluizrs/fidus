@@ -106,3 +106,14 @@ escrita = false             # responder nesses canais (sempre com confirmação)
 item_chars = 600
 max_itens = 10
 pedido_chars = 4000
+
+# --- Modelo de IA ---
+[modelo]
+provedor = "claude"            # "claude" (nuvem) ou "local" (Ollama, neste computador)
+# claude = "claude-sonnet-5-5"
+# local = "qwen3:8b"           # precisa suportar ferramentas; baixe com: ollama pull qwen3:8b
+# local_url = "http://127.0.0.1:11434"   # só endereços da própria máquina
+# O modelo local só LÊ por padrão. Para liberar criar/editar/apagar/enviar é preciso ligar as DUAS opções
+# (o app mostra os riscos e pede a sua ciência):
+# local_acoes = false
+# local_acoes_ciente = false

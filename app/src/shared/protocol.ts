@@ -73,6 +73,7 @@ export const COMMANDS = [
   "voices",
   "devices",
   "api_key",
+  "local_models",
   "simulate",
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];

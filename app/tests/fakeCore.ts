@@ -16,7 +16,7 @@ export function makeProfile(id = "alfred"): Obj {
   };
 }
 
-export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micStatus?: string } = {}) {
+export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micStatus?: string; ollamaRunning?: boolean } = {}) {
   const calls: [string, Obj][] = [];
   const profiles: Record<string, Obj> = { alfred: makeProfile("alfred"), donna: makeProfile("donna"), jarbis: makeProfile("jarbis") };
   const deletedStash: Record<string, Obj[]> = {};
@@ -26,7 +26,7 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
     "voz.atalho_ativo": true, "voz.microfone": "", "voz.modelo_whisper": "small", "voz.velocidade_voz": 0, "voz.responder_em_voz": true,
     "usuario.nome": "", "usuario.sobrenome": "", "memoria.aprender": true, "memoria.perguntar_antes_de_guardar": false,
     "privacidade.registrar_acoes": true, "privacidade.guardar_log_dias": 30, "privacidade.guardar_historico": true,
-    "privacidade.avisar_microfone": true, "modelo.claude": "claude-sonnet-5-5", "arquivos.pastas_liberadas": [], ...init.effective,
+    "privacidade.avisar_microfone": true, "modelo.provedor": "claude", "modelo.claude": "claude-sonnet-5-5", "modelo.local": "qwen3:8b", "modelo.local_acoes": false, "modelo.local_acoes_ciente": false, "arquivos.pastas_liberadas": [], ...init.effective,
   };
   const memory: Obj[] = [];
   const log: Obj[] = [{ ts: "2026-10-23T12:00:00+00:00", tool: "abrir_app", risk: "escrita", decision: "confirmado", args: {}, result: "" }];
@@ -82,9 +82,12 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
           if (k === "voz.velocidade_voz" && (v < -10 || v > 10)) return fail("voz.velocidade_voz: valor fora do intervalo -10 a 10");
           effective[k] = v;
         }
+        if (a.patch["modelo.local_acoes_ciente"] === false && !("modelo.local_acoes" in a.patch)) effective["modelo.local_acoes"] = false;
+        if (effective["modelo.local_acoes"] && !effective["modelo.local_acoes_ciente"]) { effective["modelo.local_acoes"] = false; return fail("Para liberar ações com o modelo local, marque que você entende os riscos."); }
         const need = Object.keys(a.patch).filter((k) => ["voz.modelo_whisper", "voz.microfone", "voz.atalho"].includes(k));
         return ok({ saved: Object.keys(a.patch), restart_required: need });
       }
+      case "local_models": return ok({ running: init.ollamaRunning !== false, models: ["qwen3:8b", "llama3.1:8b"], suggested: "qwen3:8b", url: "http://127.0.0.1:11434" });
       case "calls": calls_state = { enabled: a.value, until: null }; return ok({ enabled: a.value });
       case "set_default_character": Object.values(profiles).forEach((p) => (p.is_default = p.id === a.id)); return ok({ default_character: a.id });
       case "characters": return characters(a);
