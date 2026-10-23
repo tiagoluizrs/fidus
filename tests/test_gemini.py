@@ -142,3 +142,69 @@ def test_provedor_e_troca_ao_vivo():
     assert sync_provider(o, cfg) is True and o.provider.kind == "gemini"
     cfg.gemini_model = "gemini-2.5-flash"
     assert sync_provider(o, cfg) is False and o.provider.model == "gemini-2.5-flash"
+
+
+# ---- modelos que a chave enxerga ----
+
+
+class JsonResp:
+    def __init__(self, data):
+        self._b = json.dumps(data).encode()
+
+    def read(self):
+        return self._b
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def model(name, methods=("generateContent",)):
+    return {"name": f"models/{name}", "supportedGenerationMethods": list(methods)}
+
+
+def test_lista_so_os_modelos_de_conversa_da_chave_do_melhor_para_o_pior():
+    from fidus.core.providers.gemini import list_models
+
+    data = {"models": [
+        model("gemini-2.5-pro"), model("gemini-3.1-flash-lite"), model("gemini-3-flash-preview"), model("gemini-3.6-flash"),
+        model("gemini-2.5-flash"), model("gemini-2.5-flash-preview-tts"), model("gemini-embedding-2", ("embedContent",)),
+        model("gemini-3.8-live"), model("gemini-3-pro-image-preview"), model("gemma-4"), model("gemini-3.5-transcribe"),
+    ]}
+    seen = []
+
+    def opener(req, timeout=None):
+        seen.append(req)
+        return JsonResp(data)
+
+    out = list_models("chave-qualquer-1234567890", opener)
+    assert out[0] == "gemini-3.6-flash"  # flash estável mais novo primeiro
+    assert out.index("gemini-2.5-flash") < out.index("gemini-3-flash-preview") < out.index("gemini-2.5-pro")
+    assert set(out) == {"gemini-2.5-pro", "gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-3.6-flash", "gemini-2.5-flash"}
+    assert seen[0].get_header("X-goog-api-key") == "chave-qualquer-1234567890" and "/models?" in seen[0].full_url
+
+
+def test_lista_com_chave_invalida_explica():
+    from fidus.core.providers.gemini import list_models
+
+    def opener(req, timeout=None):
+        raise err(400, "API key not valid")
+
+    with pytest.raises(GeminiError, match="não foi aceita"):
+        list_models("ruim", opener)
+
+
+def test_modelo_inexistente_troca_pelo_melhor_da_chave_e_tenta_de_novo():
+    lista = {"models": [model("gemini-3.6-flash"), model("gemini-2.5-pro")]}
+    p, seen = make([err(404, "models/gemini-2.5-flash is not found"), JsonResp(lista), sse(part_chunk({"text": "Olá!"}))])
+    r = p.complete("s", [Message("user", text="oi")], [])
+    assert r.text == "Olá!" and p.model == "gemini-3.6-flash"
+    assert "gemini-3.6-flash:streamGenerateContent" in seen[2].full_url  # a segunda tentativa já usa o modelo certo
+
+
+def test_modelo_inexistente_sem_alternativa_continua_dando_erro_claro():
+    p, _ = make([err(404, "not found"), JsonResp({"models": []})])
+    with pytest.raises(GeminiError, match="não existe"):
+        p.complete("s", [Message("user", text="oi")], [])

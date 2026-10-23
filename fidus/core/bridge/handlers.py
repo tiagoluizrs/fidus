@@ -442,6 +442,8 @@ class Handlers:
         """Chave do provedor (Anthropic ou Gemini). Nunca volta para a tela: só `stored` (guardada ou não) e de onde vem."""
         if provider == "gemini":
             return self._gemini_key(op, value)
+        if op == "models":
+            raise ValueError("Operação desconhecida: models")
         if op == "set":
             key = (value or "").strip()
             if not key.startswith("sk-ant-") or len(key) < 20 or any(c.isspace() for c in key):
@@ -458,6 +460,17 @@ class Handlers:
 
     def _gemini_key(self, op: str, value: str) -> dict:
         name = vault.GEMINI_KEY
+        if op == "models":  # os modelos que a chave enxerga (a lista do Google muda)
+            from ..providers.gemini import GeminiError, list_models
+
+            key = vault.get_secret(name)
+            if not key:
+                raise ValueError("Defina a chave do Gemini primeiro.")
+            try:
+                models = list_models(key)
+            except GeminiError as e:
+                raise ValueError(str(e)) from e
+            return {"models": models, "best": models[0] if models else ""}
         if op == "set":
             key = (value or "").strip()
             # O formato das chaves do Google muda com o tempo: só conferimos o básico (tamanho e caracteres de uma chave).

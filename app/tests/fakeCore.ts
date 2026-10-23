@@ -120,6 +120,7 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
       case "voices": return ok({ engine: "sapi", voices: ["Microsoft Maria", "Microsoft Daniel"] });
       case "devices": return ok({ devices: [{ index: 1, name: "Microfone (Realtek)", default: true }, { index: 4, name: "Headset USB", default: false }] });
       case "api_key":
+        if (a.provider === "gemini" && a.op === "models") return ok({ models: ["gemini-3.6-flash", "gemini-2.5-pro"], best: "gemini-3.6-flash" });
         if (a.provider === "gemini") { if (a.op === "set") gkey = { stored: true, source: "cofre" }; return ok(gkey); }
         if (a.op === "set") { if (!String(a.value).startsWith("sk-ant-")) return fail("Isso não parece uma chave da Anthropic (começa com sk-ant-)."); key = { stored: true, source: "cofre" }; }
         return ok(key);

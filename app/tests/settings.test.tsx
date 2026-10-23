@@ -354,3 +354,17 @@ describe("Gemini", () => {
     await waitFor(() => expect(sent(f.calls, "api_key", "set")[0][1]).toMatchObject({ provider: "gemini" }));
   });
 });
+
+describe("Gemini: modelos que a chave enxerga", () => {
+  it("se o modelo salvo não existe para a chave, troca pelo melhor e mostra só os disponíveis", async () => {
+    const f = installFakeCore({ effective: { "modelo.provedor": "gemini", "modelo.gemini": "gemini-2.5-flash" } });
+    const user = await open("Modelo de IA");
+    await user.click(await screen.findByRole("button", { name: "Definir" }));
+    await user.type(screen.getByLabelText("Chave do Gemini", { selector: "input" }), "AQ.Ab8" + "k".repeat(35));
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(f.effective["modelo.gemini"]).toBe("gemini-3.6-flash"));
+    expect(await screen.findByRole("option", { name: "gemini-3.6-flash" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "gemini-2.5-flash" })).toBeNull(); // o que não existe some da lista
+    expect(await screen.findByText(/não está disponível para a sua chave/)).toBeInTheDocument();
+  });
+});

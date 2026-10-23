@@ -7,6 +7,7 @@ produtos dele: a tela avisa antes de escolher este provedor.
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -21,6 +22,33 @@ _SCHEMA_KEYS = {"type", "format", "description", "nullable", "enum", "properties
 
 class GeminiError(RuntimeError):
     pass
+
+
+_NOT_CHAT = re.compile(r"(tts|live|embed|image|audio|robotics|transcribe|native|computer-use|veo|imagen|aqa|learnlm|vision|translate)", re.I)
+
+
+def list_models(key: str, opener: Callable = urllib.request.urlopen, timeout_s: float = 20.0) -> list[str]:
+    """Modelos que ESTA chave pode usar para conversar (a lista do Google muda com o tempo), do melhor para o pior."""
+    req = urllib.request.Request(f"{BASE}/models?pageSize=200", headers={"x-goog-api-key": key})
+    try:
+        with opener(req, timeout=timeout_s) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        raise GeminiError(_http_message(e)) from e
+    except (urllib.error.URLError, ConnectionError, TimeoutError, OSError, ValueError) as e:
+        raise GeminiError("Não consegui falar com o Gemini. Confira a internet.") from e
+    names = []
+    for m in data.get("models", []):
+        name = str(m.get("name", "")).removeprefix("models/")
+        if name.startswith("gemini-") and "generateContent" in (m.get("supportedGenerationMethods") or []) and not _NOT_CHAT.search(name):
+            names.append(name)
+    return sorted(set(names), key=_rank, reverse=True)
+
+
+def _rank(name: str) -> tuple:
+    """Prefere o 'flash' (rápido, grátis e bom o bastante) estável e mais novo; 'lite' e 'preview' ficam depois."""
+    version = re.search(r"gemini-(\d+(?:\.\d+)?)", name)
+    return ("flash" in name and "lite" not in name, not re.search(r"preview|exp", name), float(version.group(1)) if version else 0.0, "pro" in name)
 
 
 class GeminiProvider:
@@ -43,7 +71,7 @@ class GeminiProvider:
         r = self._generate("Responda apenas: ok", [Message("user", text="ok")], [], None)
         return r.text
 
-    def _generate(self, system, messages, tools, on_text) -> Response:
+    def _generate(self, system, messages, tools, on_text, _retry: bool = True) -> Response:
         key = self._key()
         if not key:
             raise GeminiError("Falta a chave do Gemini (Configurações > Modelo de IA).")
@@ -79,10 +107,20 @@ class GeminiProvider:
                     if chunk.get("promptFeedback", {}).get("blockReason"):
                         raise GeminiError("O Gemini recusou este pedido (conteúdo bloqueado pelo filtro dele).")
         except urllib.error.HTTPError as e:
+            if e.code == 404 and _retry and (best := self._best_available(key)):
+                self.model = best  # o modelo salvo não existe para esta chave: usa o melhor que ela enxerga e tenta de novo
+                return self._generate(system, messages, tools, on_text, _retry=False)
             raise GeminiError(_http_message(e)) from e
         except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
             raise GeminiError("Não consegui falar com o Gemini. Confira a internet.") from e
         return Response(text="".join(text), tool_calls=calls)
+
+    def _best_available(self, key: str) -> str | None:
+        try:
+            models = list_models(key, self._open)
+        except GeminiError:
+            return None
+        return models[0] if models and self.model not in models else None
 
 
 def _clean_schema(node):

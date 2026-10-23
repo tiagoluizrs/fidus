@@ -25,6 +25,18 @@ export function ModeloIA() {
   const local = provider === "local";
   const gemini = provider === "gemini";
   const gModel = String(eff["modelo.gemini"] ?? "gemini-2.5-flash");
+  const [gList, setGList] = useState<string[] | null>(null);
+  const loadGemini = useCallback(async () => {
+    const r = await call<{ models: string[]; best: string }>("api_key", { op: "models", provider: "gemini" }, { quiet: true });
+    if (!r) return setGList(null);
+    setGList(r.models);
+    // o modelo salvo não existe para esta chave: já troca pelo melhor disponível, em vez de falhar na primeira pergunta
+    if (r.best && !r.models.includes(String(eff["modelo.gemini"] ?? ""))) {
+      await save({ "modelo.gemini": r.best });
+      notify("info", `O modelo salvo não está disponível para a sua chave. Usando ${r.best}.`);
+    }
+  }, [call, save, notify, eff]);
+  useEffect(() => { if (gemini && gkey?.stored) void loadGemini(); }, [gemini, gkey?.stored]); // eslint-disable-line react-hooks/exhaustive-deps
   const localModel = String(eff["modelo.local"] ?? "qwen3:8b");
   const ack = eff["modelo.local_acoes_ciente"] === true;
   const [ollama, setOllama] = useState<LocalModels | null>(null);
@@ -52,6 +64,7 @@ export function ModeloIA() {
     if (r) {
       (target === "gemini" ? setGkey : setKey)(r);
       setEditing(null);
+      if (target === "gemini") void loadGemini();
       notify("ok", "Chave guardada no cofre do sistema.");
     }
   };
@@ -72,11 +85,12 @@ export function ModeloIA() {
         </div>
         {gemini && (
           <>
-            <Row label="Modelo" htmlFor="gemini-model" hint="O gemini-2.5-flash é o mais equilibrado. O 2.5-pro pensa melhor, mas tem limite menor no plano grátis.">
+            <Row label="Modelo" htmlFor="gemini-model" hint={gList ? "Estes são os modelos que a sua chave pode usar. Os “flash” são rápidos e entram no plano grátis; os “pro” pensam melhor, mas têm limite menor." : "Defina a chave para ver os modelos que ela pode usar."}>
               <select id="gemini-model" value={gModel} onChange={(e) => save({ "modelo.gemini": e.target.value })}>
-                {!geminiModels.includes(gModel) && <option value={gModel}>{gModel}</option>}
-                {geminiModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                {!(gList ?? geminiModels).includes(gModel) && <option value={gModel}>{gModel}</option>}
+                {(gList ?? geminiModels).map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
+              {gkey?.stored && <Button onClick={() => void loadGemini()}>Atualizar lista</Button>}
             </Row>
             <Row label="Chave do Gemini" hint="Crie grátis em aistudio.google.com > Get API key e copie a chave inteira.">
               <span className="inline">
