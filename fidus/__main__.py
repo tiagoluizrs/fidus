@@ -12,6 +12,8 @@
   uv run fidus character list|show|reset|default|set|phrase   personagens (personalidade, frases, voz)
   uv run fidus memory list|search|add|edit|delete|export|forget-all   memória única
   uv run fidus user show|set      seu nome (usado nas falas)
+  uv run fidus secrets set|get|delete|list|migrate   chaves no Gerenciador de Credenciais do Windows
+  uv run fidus accounts list|connect|disconnect|channels   Google Agenda, Gmail e Slack
   uv run fidus --check-key        testa a chave da Anthropic
 """
 
@@ -20,7 +22,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-COMMANDS = {"voice", "say", "mics", "listen", "wake-test", "wake-bench", "character", "memory", "user"}
+COMMANDS = {"voice", "say", "mics", "listen", "wake-test", "wake-bench", "character", "memory", "user", "secrets", "accounts"}
 
 
 def _cmd_mics() -> int:
@@ -141,6 +143,10 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] in COMMANDS:
         cmd, rest = argv[0], argv[1:]
+        if cmd in {"secrets", "accounts"}:
+            from . import cli_accounts
+
+            return getattr(cli_accounts, f"cmd_{cmd}")(rest)
         if cmd in {"character", "memory", "user"}:
             from . import cli_data
 

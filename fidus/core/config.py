@@ -109,6 +109,26 @@ class CharactersConfig:
 
 
 @dataclass
+class AccountsConfig:
+    calendar: str = "google"  # qual serviço está por trás de cada interface
+    email: str = "gmail"
+    chat: str = "slack"
+    google_calendar_write: bool = False  # escrita liberada por serviço (criar/alterar eventos)
+    gmail_drafts: bool = False  # criar rascunhos (o escopo do Gmail para isso também permite enviar; o Fidus nunca envia)
+    slack_channels: list[str] = field(default_factory=list)  # só estes canais/conversas (nome ou id)
+    slack_write: bool = False  # responder em canais permitidos (sempre com confirmação)
+
+
+@dataclass
+class LimitsConfig:
+    """Quanto de conteúdo externo pode ir ao modelo."""
+
+    item_chars: int = 600  # por e-mail/mensagem/evento
+    max_items: int = 10
+    request_chars: int = 4000  # por resultado de ferramenta
+
+
+@dataclass
 class Config:
     model: str = DEFAULT_MODEL
     max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS
@@ -120,6 +140,8 @@ class Config:
     user: UserConfig = field(default_factory=UserConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     characters: CharactersConfig = field(default_factory=CharactersConfig)
+    accounts: AccountsConfig = field(default_factory=AccountsConfig)
+    limits: LimitsConfig = field(default_factory=LimitsConfig)
 
     @property
     def debug_audio_dir(self) -> Path:
@@ -208,6 +230,17 @@ def _apply_extras(cfg: Config, data: dict) -> None:
     c = data.get("personagens", {})
     cfg.characters.speak_start = bool(c.get("falar_inicio", cfg.characters.speak_start))
     cfg.characters.speak_farewell = bool(c.get("falar_despedida", cfg.characters.speak_farewell))
+    a, ac = data.get("contas", {}), cfg.accounts
+    ac.calendar, ac.email, ac.chat = (str(a.get(k, getattr(ac, v))) for k, v in (("agenda", "calendar"), ("email", "email"), ("chat", "chat")))
+    g, sl = a.get("google", {}), a.get("slack", {})
+    ac.google_calendar_write = bool(g.get("agenda_escrita", ac.google_calendar_write))
+    ac.gmail_drafts = bool(g.get("gmail_rascunhos", ac.gmail_drafts))
+    ac.slack_channels = [str(x).lstrip("#") for x in sl.get("canais_permitidos", ac.slack_channels)]
+    ac.slack_write = bool(sl.get("escrita", ac.slack_write))
+    lim, lc = data.get("limites", {}), cfg.limits
+    lc.item_chars = int(lim.get("item_chars", lc.item_chars))
+    lc.max_items = int(lim.get("max_itens", lc.max_items))
+    lc.request_chars = int(lim.get("pedido_chars", lc.request_chars))
 
 
 def _apply_voice(v: VoiceConfig, d: dict) -> None:

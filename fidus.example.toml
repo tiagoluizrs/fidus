@@ -85,3 +85,24 @@ max_contexto_chars = 1500            # limite do trecho de memória enviado ao m
 resumir_apos_turnos = 12             # conversa mais longa que isso vira um resumo
 turnos_recentes = 6                  # turnos mantidos na íntegra depois de resumir
 criptografar = "auto"                # auto | sim | nao (SQLCipher; a chave fica no Gerenciador de Credenciais)
+
+# ---------------------------------------------------------------- Etapa 4
+[contas]
+agenda = "google"
+email = "gmail"
+chat = "slack"
+
+[contas.google]
+# Leitura é o padrão. Prefira `uv run fidus accounts connect agenda --escrita`, que também pede o escopo ao Google.
+agenda_escrita = false      # criar/alterar eventos (sempre com confirmação)
+gmail_rascunhos = false     # criar RASCUNHOS (nunca há envio)
+
+[contas.slack]
+canais_permitidos = []      # ex.: ["geral", "projeto-x"]; ou `uv run fidus accounts channels add geral`
+escrita = false             # responder nesses canais (sempre com confirmação)
+
+[limites]
+# Quanto conteúdo externo (e-mail, mensagem, evento) pode ir ao modelo.
+item_chars = 600
+max_itens = 10
+pedido_chars = 4000
