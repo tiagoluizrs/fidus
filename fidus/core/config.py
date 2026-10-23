@@ -8,6 +8,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .paths import default_data_dir, legacy_data_dir, migrate_legacy
+
 DEFAULT_MODEL = "claude-sonnet-5-5"
 DEFAULT_MAX_TOOL_CALLS = 8
 
@@ -156,7 +158,7 @@ class Config:
     max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS
     allowed_folders: list[Path] = field(default_factory=list)
     allowed_apps: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_APPS))
-    data_dir: Path = field(default_factory=lambda: Path.home() / ".fidus")
+    data_dir: Path = field(default_factory=lambda: default_data_dir())
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     wake: WakeConfig = field(default_factory=WakeConfig)
     user: UserConfig = field(default_factory=UserConfig)
@@ -224,8 +226,10 @@ def load_config() -> Config:
     load_dotenv()
     cfg = Config(
         model=os.environ.get("CLAUDE_MODEL", DEFAULT_MODEL),
-        data_dir=Path(os.environ.get("FIDUS_HOME", Path.home() / ".fidus")),
+        data_dir=default_data_dir(),
     )
+    if not os.environ.get("FIDUS_HOME"):
+        migrate_legacy(cfg.data_dir, legacy_data_dir())  # primeira execução depois da mudança para %APPDATA%\Fidus
     data: dict = {}
     path = _find_config_file(cfg.data_dir)
     if path is not None:

@@ -2,7 +2,7 @@
 
 Assistente de voz para desktop (Windows), "seu conselheiro de IA". Visão, arquitetura e roteiro em [`PROJETO.md`](PROJETO.md).
 
-**Estado atual: Etapa 5B (janela de Configurações)** sobre interface (5A),  integrações (4), personagens e memória (3), palavra de ativação (2B), voz (2) e núcleo (1).  Retomar o trabalho: veja `PROGRESSO.md`.
+**Estado atual: Etapa 6 (empacotamento e instalador)** sobre configurações (5B), interface (5A), integrações (4), personagens e memória (3), palavra de ativação (2B), voz (2) e núcleo (1). Retomar o trabalho: veja `PROGRESSO.md`.
 
 ## Instalação (Windows 10/11, PowerShell)
 
@@ -494,6 +494,26 @@ personagem, restaurar padrões), **Modelo de IA** (modelo do Claude, chave da AP
 
 Está em `PROGRESSO.md`, seção "Etapa 5B".
 
-## Fora do escopo desta etapa
+## Empacotar e instalar (Etapa 6)
 
-Interface (etapa 5) e empacotamento (etapa 6), Gmail/Slack, interface, Piper e provedor Ollama. Ver o roteiro no `PROJETO.md`.
+O Fidus vira um instalador do Windows (`Fidus-Setup-<versão>.exe`, NSIS, sem administrador) com o app Electron e o núcleo
+Python congelado (`resources\core\fidus-core.exe`, PyInstaller onedir). Passo a passo, checklist de instalação limpa,
+assinatura e alternativas ao Electron: [`docs/LANCAMENTO.md`](docs/LANCAMENTO.md). Medições em
+[`docs/MEDICOES.md`](docs/MEDICOES.md).
+
+```powershell
+.\packaging\build_core.ps1      # núcleo -> app\resources-core\fidus-core
+cd app; npm install; npm run dist   # instalador -> app\release
+app\resources-core\fidus-core\fidus-core.exe selftest   # confere as bibliotecas e os dados empacotados
+```
+
+- **Dados** ficam em `%APPDATA%\Fidus` (a pasta antiga `~\.fidus` é copiada na primeira execução, sem apagar a original);
+  o cache do Electron em `%APPDATA%\Fidus\app`. Desinstalar **não** apaga os dados.
+- **Iniciar com o Windows:** Configurações > Geral (desligado por padrão; só vale no app instalado).
+- O instalador **não é assinado** (o SmartScreen vai avisar) e o logo ainda é provisório.
+- Verificado em Linux: build do núcleo congelado, `selftest`, o app empacotado (`electron-builder --dir`) iniciando o núcleo
+  congelado e conectando. O instalador `.exe` e a instalação limpa precisam ser feitos no Windows (checklist no LANCAMENTO).
+
+## Fora do escopo
+
+Provedor de modelo local (Ollama), Outlook/Teams/Microsoft Agenda, Piper guiado, assinatura de código e MSIX. Ver o roteiro no `PROJETO.md` e as dúvidas em `PROGRESSO.md`.

@@ -3,13 +3,15 @@ import { writeFileSync } from "node:fs";
 import { BridgeClient } from "./bridge";
 import { CoreProcess } from "./core";
 import { ALLOWED_COMMANDS, MIC_SETTINGS_URL, RingLifecycle, SETTINGS_ONLY_COMMANDS, applyEvent, planAppSettings, safeFileName } from "./logic";
-import { resolveCoreCommand } from "./paths";
+import { electronDataDir, resolveCoreCommand } from "./paths";
 import { hardenContents, hardenSession } from "./security";
 import { AppTray } from "./tray";
 import { Windows, resolveDirs } from "./windows";
 import type { CoreEvent, Snapshot } from "../src/shared/protocol";
 
 const IDLE_CLOSE_MS = Number(process.env.FIDUS_RING_IDLE_MS) || 6000; // janela some depois de alguns segundos parado
+
+if (app.isPackaged) app.setPath("userData", electronDataDir(app.getPath("appData"), process.env)); // antes de qualquer outra coisa
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();

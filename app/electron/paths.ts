@@ -25,3 +25,13 @@ export function resolveCoreCommand(o: ResolveOptions): CoreCommand {
   }
   return { command: "uv", args: ["run", "fidus", ...flags], cwd: path.resolve(o.appPath, "..") };
 }
+
+/** Pasta de dados do núcleo (a mesma que o Python usa): %APPDATA%\Fidus. `FIDUS_HOME` tem prioridade. */
+export function coreDataDir(appData: string, env: NodeJS.ProcessEnv): string {
+  return env.FIDUS_HOME ? env.FIDUS_HOME : path.join(appData, "Fidus");
+}
+
+/** Dados do próprio Electron (cache, etc.) ficam numa subpasta, para não se misturar com memória e configurações. */
+export function electronDataDir(appData: string, env: NodeJS.ProcessEnv): string {
+  return path.join(coreDataDir(appData, env), "app");
+}

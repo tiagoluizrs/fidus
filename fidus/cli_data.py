@@ -144,7 +144,7 @@ def _show(store: CharacterStore, cid: str, cfg) -> None:
 
 
 def cmd_memory(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(prog="fidus memory", description="Memória única (Markdown em ~/.fidus/memoria)")
+    p = argparse.ArgumentParser(prog="fidus memory", description="Memória única (Markdown na pasta de dados, em memoria/)")
     sub = p.add_subparsers(dest="cmd", required=True)
     ls = sub.add_parser("list", help="lista as lembranças")
     ls.add_argument("--secao")

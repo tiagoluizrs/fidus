@@ -12,7 +12,9 @@
     "start:sim": "npm run build && electron . --simulado",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "icons": "python3 scripts/make_icons.py"
+    "icons": "python3 scripts/make_icons.py",
+    "dist": "npm run build && electron-builder --win nsis --x64",
+    "pack:dir": "npm run build && electron-builder --dir"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "^5.1.0",
@@ -25,6 +27,7 @@
     "@types/ws": "^8.5.0",
     "@vitejs/plugin-react": "^4.3.0",
     "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.24.0",
     "jsdom": "^25.0.0",
     "react": "^18.3.1",
@@ -33,5 +36,55 @@
     "vite": "^5.4.0",
     "vitest": "^2.1.0",
     "ws": "^8.18.0"
+  },
+  "author": "Fidus",
+  "build": {
+    "appId": "br.org.igarape.fidus",
+    "productName": "Fidus",
+    "copyright": "Fidus",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "assets/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources-core/fidus-core",
+        "to": "core",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Fidus",
+      "runAfterFinish": true,
+      "uninstallDisplayName": "Fidus"
+    },
+    "artifactName": "Fidus-Setup-${version}.${ext}",
+    "publish": null
   }
 }

@@ -23,7 +23,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-COMMANDS = {"voice", "say", "mics", "listen", "wake-test", "wake-bench", "character", "memory", "user", "secrets", "accounts", "daemon"}
+COMMANDS = {"voice", "say", "mics", "listen", "wake-test", "wake-bench", "character", "memory", "user", "secrets", "accounts", "daemon", "selftest"}
 
 
 def _cmd_mics() -> int:
@@ -140,10 +140,46 @@ def _text_mode(args) -> int:
                 print(f"\nErro: {type(e).__name__}: {e}", file=sys.stderr)
 
 
+SELFTEST_MODULES = ["anthropic", "keyring", "numpy", "sounddevice", "faster_whisper", "openwakeword (enxuto)", "sqlcipher3", "websockets",
+                    "googleapiclient.discovery", "google_auth_oauthlib.flow", "psutil", "pynput.keyboard", "win32com.client"]
+
+
+def _cmd_selftest() -> int:
+    """Confere se as bibliotecas pesadas (importadas só quando usadas) estão no pacote. Usado para validar o instalador."""
+    import importlib
+
+    bad = 0
+    for name in SELFTEST_MODULES:
+        if name == "win32com.client" and sys.platform != "win32":
+            continue
+        try:
+            if name.startswith("openwakeword"):  # o Fidus importa sem scikit-learn (voice/oww.py); o pacote também não o leva
+                from .core.voice.oww import import_openwakeword
+
+                import_openwakeword()
+            else:
+                importlib.import_module(name)
+            print(f"ok      {name}")
+        except Exception as e:  # noqa: BLE001 - queremos listar todas as falhas, não parar na primeira
+            bad += 1
+            print(f"FALHOU  {name}: {type(e).__name__}: {e}")
+    from .core.characters.store import CharacterStore  # noqa: F401  (confere também os dados empacotados)
+    from .core.config import load_config
+
+    cfg = load_config()
+    ids = CharacterStore(cfg.characters_dir).ids()
+    print(f"personagens: {', '.join(ids) or 'nenhum'}")
+    bad += 0 if len(ids) >= 3 else 1
+    print(f"dados em: {cfg.data_dir}")
+    return 1 if bad else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] in COMMANDS:
         cmd, rest = argv[0], argv[1:]
+        if cmd == "selftest":
+            return _cmd_selftest()
         if cmd == "daemon":
             from .core.bridge.daemon import run_daemon
             from .core.config import load_config
