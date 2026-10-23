@@ -311,3 +311,17 @@ describe("Ícone do app", () => {
     expect(within(grupo).getByRole("radio", { name: /Escuro/ })).toHaveAttribute("aria-checked", "true");
   });
 });
+
+describe("Contas se atualiza ao voltar da página do Google", () => {
+  it("relê as contas quando a janela volta ao foco ou o núcleo reenvia o estado", async () => {
+    const f = installFakeCore();
+    await open("Contas");
+    await screen.findByText("Credenciais do Google");
+    const antes = sent(f.calls, "accounts", "list").length;
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => expect(sent(f.calls, "accounts", "list").length).toBeGreaterThan(antes));
+    const meio = sent(f.calls, "accounts", "list").length;
+    f.emit({ type: "ready", protocol: 1, snapshot: {} as never });
+    await waitFor(() => expect(sent(f.calls, "accounts", "list").length).toBeGreaterThan(meio));
+  });
+});

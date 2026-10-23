@@ -9,6 +9,12 @@
   }
   var es = new EventSource("/api/events");
   es.onmessage = function (m) { var e = JSON.parse(m.data); listeners.forEach(function (cb) { cb(e); }); };
+  // Se a conexão caiu e voltou, eventos podem ter se perdido: entrega o estado atual como um novo "ready" para as telas relerem tudo.
+  var opened = false;
+  es.onopen = function () {
+    if (opened) fetch("/api/snapshot").then(function (r) { return r.json(); }).then(function (snap) { if (snap) listeners.forEach(function (cb) { cb({ type: "ready", protocol: 1, snapshot: snap }); }); });
+    opened = true;
+  };
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { theme = systemTheme(); themeCbs.forEach(function (cb) { cb(theme); }); });
   window.__fidusSetTheme = function (t) { theme = t; themeCbs.forEach(function (cb) { cb(t); }); };
   window.fidus = {

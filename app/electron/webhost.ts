@@ -74,6 +74,11 @@ const server = createServer(async (req, res) => {
   }
 });
 
+// Um comentário a cada 15 s mantém a conexão de eventos viva (proxies do Docker/navegador fecham conexões paradas).
+setInterval(() => { for (const c of clients) c.write(": ping
+
+"); }, 15000).unref();
+
 function broadcast(e: CoreEvent) {
   const line = `data: ${JSON.stringify(e)}\n\n`;
   for (const c of clients) c.write(line);

@@ -56,6 +56,43 @@ def _pack(creds, scopes: list[str]) -> str:
     )
 
 
+def run_flow_via_ui(flow, port: int, open_url: Callable[[str], None], timeout_s: float = 300):
+    """Login do Google quando o navegador não é o do próprio computador (Docker): entrega o link à interface e espera o
+    retorno numa porta fixa. Servidor próprio, com a porta SEMPRE liberada e reutilizável: o `run_local_server` da
+    biblioteca deixa a porta presa por cerca de um minuto, e o login seguinte (ex.: Agenda depois do Gmail) falhava."""
+    import wsgiref.simple_server as ws
+    import wsgiref.util
+
+    got: dict[str, str] = {}
+
+    def app(environ, start_response):  # noqa: ANN001
+        got["uri"] = wsgiref.util.request_uri(environ)
+        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+        return ["<html><body style='font-family:system-ui;text-align:center;margin-top:15vh'><h2>Pronto!</h2>"
+                "<p>Pode fechar esta aba e voltar ao Fidus.</p></body></html>".encode("utf-8")]
+
+    class Quiet(ws.WSGIRequestHandler):
+        def log_message(self, *a, **k):  # noqa: ANN002, ANN003
+            pass
+
+    class Server(ws.WSGIServer):
+        allow_reuse_address = True
+
+    srv = ws.make_server("0.0.0.0", port, app, server_class=Server, handler_class=Quiet)
+    try:
+        flow.redirect_uri = f"http://localhost:{srv.server_port}/"
+        url, _ = flow.authorization_url(access_type="offline", prompt="consent")
+        open_url(url)
+        srv.timeout = timeout_s
+        srv.handle_request()  # espera o retorno do Google (uma requisição)
+    finally:
+        srv.server_close()  # a porta volta na hora
+    if "uri" not in got:
+        raise NotConnected("O login do Google não foi concluído a tempo. Clique em Conectar e tente de novo.")
+    flow.fetch_token(authorization_response=got["uri"].replace("http", "https", 1))
+    return flow.credentials
+
+
 def connect(config: Config, service: str, write: bool = False, flow_factory: Callable | None = None,
             open_url: Callable[[str], None] | None = None) -> list[str]:
     """Abre o navegador para autorizar e guarda o refresh token no cofre. Devolve os escopos concedidos.
@@ -76,15 +113,7 @@ def connect(config: Config, service: str, write: bool = False, flow_factory: Cal
     if open_url is None:
         creds = flow.run_local_server(port=0)
     else:
-        import webbrowser
-
-        class _UiBrowser(webbrowser.BaseBrowser):
-            def open(self, url, new=0, autoraise=True):  # noqa: ANN001
-                open_url(url)
-                return True
-
-        webbrowser.register("fidus-ui", None, _UiBrowser("fidus-ui"))
-        creds = flow.run_local_server(port=OAUTH_PORT, host="localhost", bind_addr="0.0.0.0", browser="fidus-ui", timeout_seconds=300)
+        creds = run_flow_via_ui(flow, OAUTH_PORT, open_url)
     if not creds.refresh_token:
         raise NotConnected("O Google não devolveu um token de renovação. Remova o acesso do Fidus na conta Google e tente de novo.")
     vault.set_secret(secret_name(service), _pack(creds, scopes))
