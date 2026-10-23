@@ -1,0 +1,11 @@
+# Opcional: usa a placa de vídeo NVIDIA no Ollama (muito mais rápido). Precisa do driver NVIDIA e do WSL2 no Windows.
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up web
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

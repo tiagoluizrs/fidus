@@ -308,10 +308,24 @@ def test_nome_de_ferramenta_inexistente_no_texto_nao_vira_chamada(fake):
     txt = '{"name":"apaga_tudo","parameters":{}}'
     f = fake(replies=[[chunk(txt, done=True)]])
     r = OllamaProvider("m", f.url).complete("s", [Message("user", text="x")], [AGENDA])
-    assert not r.tool_calls and r.text == txt
+    assert not r.tool_calls and "inválida" in r.text and "apaga_tudo" not in r.text  # nunca executa nem mostra o JSON
 
 
 def test_sem_streaming_tambem_reconhece_a_chamada_escrita_como_texto(fake):
     f = fake(replies=[[chunk('{"name":"agenda","arguments":{"acao":"ler"}}', done=True)]])
     r = OllamaProvider("m", f.url).complete("s", [Message("user", text="x")], [AGENDA])
     assert r.tool_calls[0].name == "agenda" and r.text == ""
+
+
+def test_json_de_ferramenta_dentro_de_bloco_de_codigo_ou_com_frase_antes_vira_chamada(fake):
+    for txt in ('```json\n{"name":"agenda","arguments":{"acao":"ler"}}\n```', 'Claro! {"name":"agenda","parameters":{"acao":"ler"}}'):
+        f = fake(replies=[[chunk(txt, done=True)]])
+        r = OllamaProvider("m", f.url).complete("s", [Message("user", text="x")], [AGENDA])
+        assert r.tool_calls and r.tool_calls[0].name == "agenda" and r.text == ""
+
+
+def test_chamada_invalida_nunca_mostra_json_cru(fake):
+    f = fake(replies=[[chunk('{"type":"function","name":"inexistente","parameters":{}}', done=True)]])
+    got: list[str] = []
+    r = OllamaProvider("m", f.url).complete_stream("s", [Message("user", text="x")], [AGENDA], got.append)
+    assert not r.tool_calls and "inválida" in r.text and "{" not in r.text and "".join(got) == r.text

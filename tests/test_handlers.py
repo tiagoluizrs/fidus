@@ -613,11 +613,11 @@ def test_baixar_modelo_do_ollama_pelo_painel_avisa_pelos_eventos(cmds, monkeypat
     from fidus.core.providers import ollama
 
     def fake_pull(url, model, progress=None, **kw):
-        assert model == "llama3.2:3b"
+        assert model == "qwen2.5:7b"
         progress and progress(50, 100)
 
     monkeypatch.setattr(ollama, "pull_model", fake_pull)
-    assert call(cmds, "local_models", op="pull", model="llama3.2:3b") == {"started": True}
+    assert call(cmds, "local_models", op="pull", model="qwen2.5:7b") == {"started": True}
     for _ in range(100):
         if any(t == "model_pull" and d["state"] == "done" for t, d in cmds.sink.seen):
             break
@@ -637,9 +637,9 @@ def test_erro_ao_baixar_modelo_vira_evento_de_erro(cmds, monkeypatch):
         raise ollama.OllamaError("Ollama fechado")
 
     monkeypatch.setattr(ollama, "pull_model", boom)
-    call(cmds, "local_models", op="pull", model="llama3.2:3b")
+    call(cmds, "local_models", op="pull", model="qwen2.5:7b")
     for _ in range(100):
         if any(t == "model_pull" and d["state"] == "error" for t, d in cmds.sink.seen):
             break
         time.sleep(0.02)
-    assert ("model_pull", {"what": "llama3.2:3b", "state": "error", "message": "Ollama fechado"}) in cmds.sink.seen
+    assert ("model_pull", {"what": "qwen2.5:7b", "state": "error", "message": "Ollama fechado"}) in cmds.sink.seen
