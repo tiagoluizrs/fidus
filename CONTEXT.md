@@ -1,4 +1,4 @@
-# CONTEXT: o que foi feito (Etapa 1, núcleo no terminal)
+# CONTEXT: o que foi feito (Etapa 1 e Etapa 2)
 
 Registro detalhado da sessão de desenvolvimento. Visão geral do produto em `PROJETO.md`; instalação e uso em `README.md`.
 
@@ -10,7 +10,7 @@ Construir **somente a Etapa 1** do roteiro: núcleo em Python no terminal (texto
 
 | Tema | Decisão | Motivo |
 | --- | --- | --- |
-| Python | **3.15** (o pedido inicial dizia 3.12; o usuário corrigiu para 3.15, que também está no `PROJETO.md`) | Instrução do usuário. uv instalou a 3.15.0b4 (beta) e todas as dependências resolveram. |
+| Python | Etapa 1 usou **3.15**. **Na Etapa 2 voltou para 3.12** (decisão do usuário, ver Etapa 2) | A 3.15 não tem wheel de `ctranslate2` (faster-whisper), `onnxruntime` nem `pywin32`. |
 | Modelo | `CLAUDE_MODEL`, padrão `claude-sonnet-5-5` | Pedido. |
 | `abrir_app` | Risco **escrita**. Apps da lista do `fidus.toml` abrem sem confirmação; qualquer outro pede `[s/n]` | O usuário não respondeu à pergunta; adotei o padrão que propus. |
 | Demonstração de confirmação | Sem ferramenta extra. Usa-se `abre o regedit` (fora da lista) | O pedido era de três ferramentas. |
@@ -95,3 +95,74 @@ Os primeiros pushes falharam com **403** (o Claude ainda não tinha acesso de es
 ## Próximo passo (não iniciado)
 
 Etapa 2 do `PROJETO.md`: voz (push-to-talk com atalho global, faster-whisper local, resposta falada pela voz do sistema) e depois o detector "ei <nome>". Aplicar a mesma regra de imports preguiçosos a Whisper e TTS.
+
+
+---
+
+# Etapa 2: voz (apenas push-to-talk)
+
+Branch `claude/etapa-2-voz`, criada a partir do `main` atualizado depois do squash merge do PR #1 (https://github.com/tiagoluizrs/fidus/pull/1, commit `b475a25`). Não existe branch `develop` no repositório; o PR e o merge foram em `main`. **Não foram feitos:** interface, Electron e detector "ei <nome>" (etapa 2B).
+
+## Antes de começar (verificações pedidas)
+
+- `uv run pytest` na etapa 1: 34 passaram, 1 pulado. Nada quebrado.
+- Divergências da etapa 1 em relação ao `PROJETO.md`: provedor sem streaming e sem adaptador Ollama/OpenAI; sem memória e personagens (etapas seguintes).
+- **Descoberta importante:** com Python 3.15 o `faster-whisper` não instala (`ctranslate2` só tem wheels até cp312; `onnxruntime` e `pywin32` também sem 3.15). Com 3.12 e 3.13 tudo resolve para Windows (`uv pip compile --python-platform windows`). O usuário aprovou voltar para **3.12**: `.python-version` = `3.12`, `requires-python = ">=3.12"`, venv recriada, `uv.lock` regenerado. O código da etapa 1 não dependia de nada da 3.15.
+- Respostas às perguntas do plano: Python 3.12 (confirmado pelo usuário). As demais seguiram os padrões propostos: atalho `Ctrl+Alt+Espaço`; voz pt-BR se existir, senão a padrão do sistema; download do modelo na primeira vez (~480 MB do Hugging Face, gratuito, modelo aberto); streaming impresso também nos comandos de texto.
+
+## Decisões técnicas
+
+| Tema | Decisão | Motivo |
+| --- | --- | --- |
+| Atalho global | `pynput` | Usa o gancho de teclado do Windows e dá eventos de apertar e soltar sem administrador. `RegisterHotKey` não avisa a soltura. Contra: não "engole" a tecla, o app em foco também a recebe. |
+| Áudio | `sounddevice`, 16 kHz, mono, float32 | Pedido. Fluxo aberto só enquanto o atalho está pressionado (nada de escuta contínua; fica para a 2B). |
+| STT | `faster-whisper` `small` `int8` CPU, `language="pt"`, `vad_filter=True`, `beam_size=1`, `condition_on_previous_text=False` | Pedido + escolhas de latência. Modelo carregado uma vez (`Transcriber.load`, idempotente). |
+| Privacidade do áudio | Só memória. `salvar_audio_debug=false` por padrão; ligado grava `.wav` em `~/.fidus/debug_audio/` | Pedido. A única rede do Whisper é o download do modelo. |
+| TTS | Interface `TTSProvider` (`speak`, `wait_idle`, `stop`, `close`, `on_start`) + `SapiTTS` (pywin32) | Pedido; Piper entra depois só trocando a implementação. |
+| SAPI e COM | Thread próprio é dono do objeto COM; fala assíncrona (`Speak(text, 1)`) com sondagem de 50 ms; `stop()` incrementa uma "geração" que invalida a frase atual e a fila | COM exige usar no thread que criou o objeto. A versão inicial tinha corrida (`wait_idle` voltando cedo, `stop` perdido); foi reescrita com contador de pendentes e geração antes dos testes. |
+| Voz pt-BR | Procura voz com LCID `416`; senão usa a padrão e `fidus say` avisa "sem voz pt-BR instalada" | Windows nem sempre tem o pacote de idioma. |
+| Confirmação por voz | Fala o pedido, escuta com detecção de fim por energia (RMS), transcreve, interpreta. Ambíguo ("pode não", "sim, não"), vazio, timeout ou erro: **cai no `[s/n]` do teclado** | Nunca aprovar sozinho. |
+| Streaming | `complete_stream` no provedor (Anthropic `messages.stream`); o orquestrador usa se existir, senão cai em `complete` e entrega o texto de uma vez | Compatível com provedores sem streaming e com os testes antigos. |
+| Frases | `SentenceSplitter`: fecha em `. ! ? …` seguidos de espaço ou em quebra de linha; não corta decimais (`3.5`) nem abreviações (`Dr.`); limpa Markdown | A voz não deve ler `**` nem `#`. |
+| Métricas | Em `actions.log` como eventos `memoria_whisper` e `metricas_pedido`; sem o texto falado, só o tamanho | Pedido; privacidade. |
+
+## Arquivos criados ou alterados
+
+- `fidus/core/config.py`: `VoiceConfig` (atalho, microfone, modelo, compute_type, dispositivo, idioma, velocidade, tempo de confirmação, áudio de debug, limites de gravação) e `[voz]` do `fidus.toml`; velocidade limitada a -10..10; `pt-BR` vira `pt` para o Whisper.
+- `fidus/core/metrics.py`: `rss_mb()` (psutil, import preguiçoso) e `Timings` com as três latências: (a) soltar o atalho -> texto, (b) texto -> primeira palavra do modelo, (c) soltar o atalho -> início da voz.
+- `fidus/core/actionlog.py`: `event(kind, **campos)` genérico.
+- `fidus/core/providers/base.py` e `anthropic.py`: `complete_stream`; conversão de resposta compartilhada.
+- `fidus/core/orchestrator.py`: `run(texto, on_text=None)`; entrega `"\n"` entre o texto anterior a uma ferramenta e o posterior, para as frases não grudarem.
+- `fidus/core/voice/`: `audio.py` (listar e resolver dispositivo, `Recorder`, `EnergyEndpointer`, `record_until_silence`), `hotkey.py` (`PushToTalk` puro + `GlobalKeyListener`), `stt.py`, `tts.py`, `sentences.py`, `confirm.py` (`parse_yes_no`, `VoiceConfirmer`), `loop.py` (`VoiceLoop` e `build_voice_loop`).
+- `fidus/__main__.py`: subcomandos `mics`, `say`, `voice`; `fidus` e `fidus "pedido"` continuam, agora com streaming. `fidus mics` sem PortAudio dá mensagem clara.
+- `fidus.example.toml` (bloco `[voz]`), `README.md` (seção Voz, escolhas, configuração, medições, checklist manual), `pyproject.toml` (novas dependências; `pywin32` só em Windows), `uv.lock`.
+- Testes novos: `test_sentences.py`, `test_hotkey_state.py`, `test_voice_confirm.py`, `test_stt_tts_audio.py`, `test_voice_loop.py`, `test_provider_stream.py`.
+
+## Detalhes do laço de voz
+
+Atalho completo pressionado -> `tts.stop()` (falar por cima interrompe) e começa a gravar. Soltar -> marca o tempo, para a gravação e enfileira. O laço principal descarta gravações < 0,3 s, transcreve, imprime `você> ...`, chama o orquestrador com `on_text`, que alimenta o `SentenceSplitter` e o TTS frase a frase; ao fim, `flush`, espera a voz terminar e grava `metricas_pedido`. Exceções no gancho de teclado são capturadas (uma exceção derrubaria o ouvinte global). Erro de um pedido vira "Desculpe, algo deu errado." e o laço continua.
+
+## Verificações feitas
+
+- `uv run pytest`: **85 passed, 1 skipped** (era 34).
+- Importar `__main__`, orquestrador e todos os módulos de voz não carrega `faster_whisper`, `sounddevice`, `pynput`, `psutil`, `numpy`, `ctranslate2`, `anthropic` nem `onnxruntime` (`-X importtime`).
+- Memória medida em Linux, sem modelo: núcleo importado ~16 MB; depois de importar `faster_whisper` ~64 MB (import 0,23 s).
+
+## O que NÃO foi validado (precisa do PC do usuário)
+
+- **Latências (a, b, c) e memória com o modelo carregado:** não medidas. O download do modelo (Hugging Face) é bloqueado neste ambiente (HTTP 403) e não há microfone. As medições ficam gravadas em `actions.log` quando o usuário rodar `fidus voice`.
+- Microfone real, atalho global com `pynput`, SAPI com `pywin32` e voz pt-BR instalada, confirmação por voz de ponta a ponta, qualidade do "sim/não" em português, `Ctrl+Alt+Espaço` sem conflito com outro programa.
+- Streaming real da API da Anthropic (testado só com cliente falso).
+- Tudo da etapa 1 ainda pendente de validação no Windows (ver acima).
+- Checklist manual completo está no `README.md`, seção "Voz (Etapa 2)".
+
+## Limitações conhecidas
+
+- O atalho não é bloqueado para o app em foco (`Ctrl+Alt+Espaço` também chega a ele).
+- Detecção de fim da resposta "sim/não" por energia (RMS, limiar 0,015): em sala barulhenta pode demorar até o tempo limite e cair no teclado.
+- A frase lida na confirmação é o texto técnico do pedido (`abrir_app (escrita): nome='regedit'`), um pouco robótico; dá para melhorar na etapa de personagens (falas por momento).
+- O `stop()` do TTS usa sondagem de 50 ms.
+
+## Próximo passo (não iniciado)
+
+Etapa 2B: detector "ei <nome>" com openWakeWord. Antes, validar no Windows o checklist da voz e anotar as latências.

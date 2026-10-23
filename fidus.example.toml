@@ -11,3 +11,14 @@ pastas_liberadas = ["~/Documents", "~/Desktop"]
 # nome falado = comando do Windows. Abrem sem confirmação; qualquer outro app pede [s/n].
 "bloco de notas" = "notepad.exe"
 "calculadora" = "calc.exe"
+
+[voz]
+atalho = "ctrl+alt+space"   # segure para falar, solte para enviar
+microfone = ""              # vazio = padrão do sistema; índice ou parte do nome (veja `uv run fidus mics`)
+modelo_whisper = "small"    # base | small | medium
+compute_type = "int8"
+dispositivo = "cpu"
+idioma = "pt-BR"
+velocidade_voz = 0          # -10 a 10
+tempo_confirmacao_s = 8
+salvar_audio_debug = false  # o áudio fica só na memória; true grava .wav para depuração
