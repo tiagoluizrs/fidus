@@ -8,6 +8,7 @@ export function hostAllowed(host: string | undefined): boolean {
 export function prepareHtml(html: string): string {
   return html
     .replace("connect-src 'none'", "connect-src 'self'")
+    .replace("object-src 'none'", "object-src 'none'; media-src blob:") // a voz gerada pelo núcleo toca como áudio local
     .replace('<script type="module"', '<script src="/shim.js"></script>\n    <script type="module"');
 }
 

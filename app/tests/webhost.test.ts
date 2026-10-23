@@ -15,6 +15,7 @@ describe("servidor de teste no navegador", () => {
     const html = `<meta content="default-src 'none'; connect-src 'none'; script-src 'self'"><script type="module" src="/a.js"></script>`;
     const out = prepareHtml(html);
     expect(out).toContain("connect-src 'self'");
+    expect(out).toContain("media-src blob:");
     expect(out.indexOf("/shim.js")).toBeLessThan(out.indexOf('type="module"'));
     expect(out).toContain("script-src 'self'");
   });

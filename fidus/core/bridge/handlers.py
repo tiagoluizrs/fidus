@@ -173,6 +173,9 @@ class Handlers:
 
     def _preview(self, cid: str, text: str | None) -> dict:
         """Ouvir amostra: fala uma frase com a voz do personagem (o núcleo simulado não fala)."""
+        preview = getattr(self.loop, "preview_voice", None)
+        if preview is not None:  # modo navegador: o núcleo gera a voz e o navegador toca
+            return preview(cid, text or f"Olá, eu sou {self.store.load(cid).name}.")
         speaker = getattr(self.loop, "speaker", None)
         if not speaker:
             return {"spoken": False, "reason": "A voz só está disponível com o núcleo real."}

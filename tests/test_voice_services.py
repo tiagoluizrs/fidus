@@ -4,6 +4,7 @@ import base64
 import hashlib
 import io
 import json
+import os
 import urllib.error
 import wave
 import zipfile
@@ -113,12 +114,51 @@ def test_instala_o_programa_e_recusa_zip_com_caminho_suspeito(tmp_path, monkeypa
     assert not (tmp_path / "o" / "fora.txt").exists() and not (tmp_path / "fora.txt").exists()
 
 
-def test_so_https_e_so_windows(tmp_path, monkeypatch):
-    monkeypatch.setattr(piper_setup.sys, "platform", "linux")
+def test_so_https_e_so_sistemas_suportados(tmp_path, monkeypatch):
+    monkeypatch.setattr(piper_setup.sys, "platform", "darwin")
     with pytest.raises(SetupError, match="HTTPS"):
         PiperStore(tmp_path)._download("http://exemplo.com/x", tmp_path / "x", "0" * 64, None)
-    with pytest.raises(SetupError, match="só para Windows"):
+    with pytest.raises(SetupError, match="não está disponível para este sistema"):
         PiperStore(tmp_path).install_piper()
+    assert PiperStore(tmp_path).status()["supported"] is False
+
+
+def test_instala_o_piper_para_linux_a_partir_de_um_tar_gz(tmp_path, monkeypatch):
+    import tarfile
+
+    monkeypatch.setattr(piper_setup.sys, "platform", "linux")
+    monkeypatch.setattr(piper_setup.platform, "machine", lambda: "x86_64")
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as t:
+        for name, data, mode in (("piper/piper", b"#!/bin/sh\n", 0o755), ("piper/espeak-ng-data/x", b"1", 0o644)):
+            info = tarfile.TarInfo(name)
+            info.size, info.mode = len(data), mode
+            t.addfile(info, io.BytesIO(data))
+    data = buf.getvalue()
+    monkeypatch.setattr(piper_setup, "LINUX_SHA256", hashlib.sha256(data).hexdigest())
+    store = PiperStore(tmp_path, opener_for({piper_setup.LINUX_URL: data}))
+    assert store.status()["supported"] is True
+    store.install_piper()
+    assert store.exe == tmp_path / "piper" / "piper" and store.exe.is_file() and (store.exe.parent / "espeak-ng-data" / "x").is_file()
+    if os.name != "nt":  # o NTFS não tem bit de execução
+        assert store.exe.stat().st_mode & 0o111  # continua executável
+    assert not (tmp_path / "piper.tmp").exists() and store.status()["installed"]
+
+
+def test_tar_com_caminho_suspeito_e_recusado(tmp_path, monkeypatch):
+    import tarfile
+
+    monkeypatch.setattr(piper_setup.sys, "platform", "linux")
+    monkeypatch.setattr(piper_setup.platform, "machine", lambda: "x86_64")
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as t:
+        info = tarfile.TarInfo("../fora.txt")
+        info.size = 1
+        t.addfile(info, io.BytesIO(b"x"))
+    monkeypatch.setattr(piper_setup, "LINUX_SHA256", hashlib.sha256(buf.getvalue()).hexdigest())
+    with pytest.raises(SetupError, match="suspeito"):
+        PiperStore(tmp_path / "o", opener_for({piper_setup.LINUX_URL: buf.getvalue()})).install_piper()
+    assert not (tmp_path / "o" / "fora.txt").exists() and not (tmp_path / "fora.txt").exists()
 
 
 def test_catalogo_tem_hashes_validos():
@@ -126,6 +166,7 @@ def test_catalogo_tem_hashes_validos():
         assert vid.startswith("pt_BR-") and v["url"].startswith("https://huggingface.co/rhasspy/piper-voices/")
         assert len(v["onnx_sha256"]) == 64 and len(v["json_sha256"]) == 64
     assert piper_setup.PIPER_URL.startswith("https://github.com/rhasspy/piper/releases/") and len(piper_setup.PIPER_SHA256) == 64
+    assert piper_setup.LINUX_URL.startswith("https://github.com/rhasspy/piper/releases/") and len(piper_setup.LINUX_SHA256) == 64
 
 
 def test_piper_tts_usa_o_id_da_voz_do_catalogo(tmp_path, monkeypatch):
