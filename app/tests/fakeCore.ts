@@ -3,6 +3,9 @@ import type { CoreEvent, FidusApi, Reply, Snapshot } from "../src/shared/protoco
 
 type Obj = Record<string, any>;
 
+// No Vitest vira vi.fn (dá para espiar chamadas); no navegador (npm run dev:web) é a própria função.
+const vf: any = (globalThis as any).vi?.fn ?? ((f?: any) => f ?? (() => {}));
+
 export function makeProfile(id = "alfred"): Obj {
   const item = (iid: string, text: string, origin = "padrao", enabled = true) => ({ id: iid, text, enabled, origin, contexts: [] });
   return {
@@ -146,24 +149,24 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
 
   const snapshot = { status: "ready", message: "", state: "idle", mic: "passive", character: chars()[0], default_character: "alfred", characters: [], model: { provider: "claude", name: "x", where: "Nuvem" }, calls: calls_state, muted: false } as unknown as Snapshot;
   const api = {
-    command: vi.fn(async (name: string, args: Obj = {}) => { calls.push([name, args]); return handle(name, args); }),
-    getSnapshot: vi.fn(async () => snapshot),
-    getTheme: vi.fn(async () => "light" as const),
-    onThemeChange: vi.fn(() => () => {}),
-    onEvent: vi.fn((cb: (e: CoreEvent) => void) => { listener = cb; return () => {}; }),
-    onNavigate: vi.fn(() => () => {}),
-    closeWindow: vi.fn(),
-    pickFolder: vi.fn(async () => "C:\\Projetos" as string | null),
-    pickSavePath: vi.fn(async () => "C:\\saida\\meus-dados.zip" as string | null),
-    saveTextFile: vi.fn(async () => true),
-    openPath: vi.fn(async () => true),
-    openMicSettings: vi.fn(async () => {}),
-    micStatus: vi.fn(async () => init.micStatus ?? "granted"),
-    restartCore: vi.fn(async () => {}),
-    copyText: vi.fn(async () => {}),
+    command: vf(async (name: string, args: Obj = {}) => { calls.push([name, args]); return handle(name, args); }),
+    getSnapshot: vf(async () => snapshot),
+    getTheme: vf(async () => "light" as const),
+    onThemeChange: vf(() => () => {}),
+    onEvent: vf((cb: (e: CoreEvent) => void) => { listener = cb; return () => {}; }),
+    onNavigate: vf(() => () => {}),
+    closeWindow: vf(),
+    pickFolder: vf(async () => "C:\\Projetos" as string | null),
+    pickSavePath: vf(async () => "C:\\saida\\meus-dados.zip" as string | null),
+    saveTextFile: vf(async () => true),
+    openPath: vf(async () => true),
+    openMicSettings: vf(async () => {}),
+    micStatus: vf(async () => init.micStatus ?? "granted"),
+    restartCore: vf(async () => {}),
+    copyText: vf(async () => {}),
   };
   window.fidus = api as unknown as FidusApi;
-  return { api, calls, profiles, effective, memory, emit: (e: CoreEvent) => listener(e), deletedStash, services: () => services, setServices: (s: Obj[]) => (services = s) };
+  return { api, calls, profiles, effective, memory, piper, cloud, emit: (e: CoreEvent) => listener(e), deletedStash, services: () => services, setServices: (s: Obj[]) => (services = s) };
 }
 
 /** Comandos recebidos com determinado nome (e, opcionalmente, operação). */

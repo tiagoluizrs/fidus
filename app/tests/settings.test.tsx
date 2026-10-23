@@ -204,3 +204,17 @@ describe("aba Voz do personagem", () => {
     expect(sent(f.calls, "voice_cloud", "clone")).toHaveLength(0);
   });
 });
+
+describe("Escutar chamados", () => {
+  it.each(["Geral", "Voz"])("o interruptor liga e desliga na tela %s e avisa o núcleo", async (tela) => {
+    const f = installFakeCore();
+    const user = await open(tela);
+    const sw = await screen.findByRole("switch", { name: "Escutar chamados" });
+    expect(sw).toHaveAttribute("aria-checked", "true");
+    await user.click(sw);
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Escutar chamados" })).toHaveAttribute("aria-checked", "false"));
+    expect(sent(f.calls, "calls")[0][1]).toEqual({ value: false });
+    await user.click(screen.getByRole("switch", { name: "Escutar chamados" }));
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Escutar chamados" })).toHaveAttribute("aria-checked", "true"));
+  });
+});

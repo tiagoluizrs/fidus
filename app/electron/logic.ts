@@ -165,7 +165,7 @@ export function isTrustedUrl(url: string, rendererDirUrl: string): boolean {
 /** Comandos que a interface pode mandar ao núcleo (o resto é recusado antes de chegar lá). */
 export const ALLOWED_COMMANDS = new Set([
   "get_state", "mute", "pause", "calls", "set_default_character", "confirm_reply", "get_settings", "set_settings", "ping", "simulate",
-  "characters", "memory", "accounts", "privacy", "about", "voices", "devices", "api_key", "local_models", "piper", "voice_cloud",
+  "characters", "memory", "accounts", "privacy", "about", "voices", "devices", "api_key", "local_models", "piper", "voice_cloud", "ask",
 ]);
 
 /** Comandos que só a janela de Configurações pode mandar (o anel só precisa de confirmar, silenciar e afins). */

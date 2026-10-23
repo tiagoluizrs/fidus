@@ -386,3 +386,15 @@ def test_accounts_connect_slack_valida_guarda_e_libera_escrita(fv, config, monke
     cli_accounts.cmd_accounts(["channels", "remove", "geral"])
     assert json.loads((tmp_path / "settings.json").read_text())["contas"]["slack"]["canais_permitidos"] == ["projeto"]
     assert cli_accounts.cmd_accounts(["disconnect", "slack"]) == 0 and "SLACK_TOKEN" not in fv.d
+
+
+def test_cofre_em_arquivo_do_docker_guarda_e_apaga(tmp_path, monkeypatch):
+    f = tmp_path / "dados" / "secrets.json"
+    monkeypatch.setenv("FIDUS_SECRETS_FILE", str(f))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert vault.get_vault_secret(vault.ANTHROPIC_KEY) is None
+    vault.set_secret(vault.ANTHROPIC_KEY, "sk-ant-" + "x" * 30)
+    assert vault.get_secret(vault.ANTHROPIC_KEY).startswith("sk-ant-") and f.is_file()
+    assert vault.delete_secret(vault.ANTHROPIC_KEY) is True
+    assert vault.get_vault_secret(vault.ANTHROPIC_KEY) is None
+    assert vault.delete_secret(vault.ANTHROPIC_KEY) is False

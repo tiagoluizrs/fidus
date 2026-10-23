@@ -96,6 +96,7 @@ class WakeConfig:
 class UserConfig:
     name: str = ""
     surname: str = ""
+    gender: str = ""  # "" (não escolheu) | homem | mulher | neutro
 
 
 @dataclass
@@ -262,6 +263,7 @@ def _apply_extras(cfg: Config, data: dict) -> None:
     u = data.get("usuario", {})
     cfg.user.name = str(u.get("nome", cfg.user.name)).strip()
     cfg.user.surname = str(u.get("sobrenome", cfg.user.surname)).strip()
+    cfg.user.gender = str(u.get("genero", cfg.user.gender)).strip()
     m, mc = data.get("memoria", {}), cfg.memory
     mc.ask_before_saving = bool(m.get("perguntar_antes_de_guardar", mc.ask_before_saving))
     mc.max_context_chars = int(m.get("max_contexto_chars", mc.max_context_chars))

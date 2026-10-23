@@ -222,3 +222,43 @@ def test_todas_as_falas_possiveis_para_pre_gerar(store):
     eng = PhraseEngine()
     texts = eng.all_renderings(store.load("alfred"), "inicio", UserInfo("Ana"), NOW)
     assert "Pois não, senhor." in texts and "Pois não, Ana?" in texts and len(texts) == len(set(texts))
+
+
+# ---------- tratamento conforme quem fala ----------
+
+
+def test_tratamento_segue_o_que_a_pessoa_escolheu(store):
+    eng = PhraseEngine(random.Random(1))
+    alfred, jarbis = store.load("alfred"), store.load("jarbis")
+    for gender, expected in [("homem", ["senhor"]), ("mulher", ["senhora"]), ("", ["senhor"])]:
+        assert eng.address_candidates(alfred, "inicio", UserInfo(gender=gender), NOW) == expected
+    assert "senhora" in eng.address_candidates(jarbis, "erro", UserInfo("Ana", gender="mulher"), NOW)
+
+
+def test_neutro_usa_o_nome_ou_nada(store):
+    eng = PhraseEngine(random.Random(1))
+    alfred = store.load("alfred")
+    assert eng.address_candidates(alfred, "inicio", UserInfo("Ana", gender="neutro"), NOW) == ["Ana"]
+    assert eng.address_candidates(alfred, "inicio", UserInfo(gender="neutro"), NOW) == []
+    texts = {eng.pick(alfred, "inicio", UserInfo(gender="neutro"), NOW) for _ in range(40)}
+    assert texts and None not in texts and not any("senhor" in t for t in texts)  # ainda fala, sem "senhor"
+    assert not any("senhora" in t or "senhor" in t for t in eng.all_renderings(alfred, "inicio", UserInfo("Ana", gender="neutro"), NOW))
+
+
+def test_so_troca_senhor_e_senhora_e_mantem_o_resto(store):
+    eng = PhraseEngine(random.Random(1))
+    donna = store.load("donna")  # "chefe" e {nome} não são tratamento por gênero
+    assert "chefe" in eng.address_candidates(donna, "inicio", UserInfo("Ana", gender="mulher"), NOW)
+
+
+@pytest.mark.parametrize("entrada,saida", [
+    ("Pois não, {tratamento}.", "Pois não."),
+    ("{tratamento}, às ordens.", "Às ordens."),
+    ("Feito, {tratamento}?", "Feito?"),
+    ("Providenciado, {tratamento}", "Providenciado"),
+    ("Sem tratamento.", "Sem tratamento."),
+])
+def test_sem_tratamento_a_pontuacao_fica_correta(entrada, saida):
+    from fidus.core.characters.phrases import without_address
+
+    assert without_address(entrada) == saida

@@ -78,6 +78,7 @@ export const COMMANDS = [
   "local_models",
   "piper",
   "voice_cloud",
+  "ask",
   "simulate",
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];

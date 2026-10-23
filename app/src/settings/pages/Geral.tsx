@@ -88,6 +88,12 @@ function NameFields() {
     <div className="two-cols">
       <NameField label="Nome" value={String(eff["usuario.nome"] ?? "")} onCommit={(v) => save({ "usuario.nome": v })} />
       <NameField label="Sobrenome" value={String(eff["usuario.sobrenome"] ?? "")} onCommit={(v) => save({ "usuario.sobrenome": v })} />
+      <div className="field gender">
+        <span className="row-label" id="gender-label">Como você prefere ser tratado</span>
+        <Segmented label="Como você prefere ser tratado" value={String(eff["usuario.genero"] ?? "")} onChange={(v) => save({ "usuario.genero": v })}
+          options={[{ value: "homem", label: "Homem" }, { value: "mulher", label: "Mulher" }, { value: "neutro", label: "Prefiro não informar" }]} />
+        <span className="muted small">{eff["usuario.genero"] ? "Define “senhor” ou “senhora” nas falas; você pode editá-las em Personagem." : "Escolha para o Fidus usar o tratamento certo. Sem escolha, ele mantém o padrão do personagem."}</span>
+      </div>
     </div>
   );
 }

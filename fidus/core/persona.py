@@ -46,7 +46,7 @@ class PersonaService:
         return self.store.load(self.resolve_id(cid))
 
     def user(self) -> UserInfo:
-        return UserInfo(self.config.user.name, self.config.user.surname)
+        return UserInfo(self.config.user.name, self.config.user.surname, self.config.user.gender)
 
     # ---- prompt, falas, voz ----
 

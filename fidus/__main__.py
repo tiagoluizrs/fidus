@@ -14,7 +14,7 @@
   uv run fidus user show|set      seu nome (usado nas falas)
   uv run fidus secrets set|get|delete|list|migrate   chaves no Gerenciador de Credenciais do Windows
   uv run fidus accounts list|connect|disconnect|channels   Google Agenda, Gmail e Slack
-  uv run fidus daemon [--simulado]   núcleo em segundo plano para a interface Electron (o app inicia este comando)
+  uv run fidus daemon [--simulado|--headless]   núcleo em segundo plano para a interface (--headless: real, sem áudio, pedidos por texto)
   uv run fidus --check-key        testa a chave da Anthropic
 """
 
@@ -101,6 +101,18 @@ def _text_mode(args) -> int:
     config = load_config()
     provider = create_provider(config)
 
+    if args.check_key and config.provider == "local":
+        from .core.providers.ollama import OllamaError, list_models
+
+        try:
+            names = list_models(config.local_url)
+            mark = "OK" if config.local_model in names else f"NÃO BAIXADO (ollama pull {config.local_model})"
+            print(f"Ollama aberto. Modelo {config.local_model}: {mark}. Instalados: {', '.join(names) or 'nenhum'}")
+            return 0 if config.local_model in names else 1
+        except OllamaError as e:
+            print(e, file=sys.stderr)
+            return 1
+
     if args.check_key:
         try:
             print(f"Chave OK. Modelo {config.model} respondeu: {provider.check_key()!r}")
@@ -123,7 +135,8 @@ def _text_mode(args) -> int:
         ask(" ".join(args.pedido))
         return 0
 
-    print(f"Fidus ({config.model}), falando como {character}. Digite 'sair' para encerrar.")
+    model = f"{config.local_model} · local, só leitura" if config.provider == "local" and not config.local_actions_allowed else config.local_model if config.provider == "local" else config.model
+    print(f"Fidus ({model}), falando como {character}. Digite 'sair' para encerrar.")
     while True:
         try:
             text = input("você> ").strip()
@@ -184,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
             from .core.bridge.daemon import run_daemon
             from .core.config import load_config
 
-            return run_daemon(load_config(), simulated="--simulado" in rest, include_test="--somente-teste" in rest, watch_stdin="--stdin-watch" in rest)
+            return run_daemon(load_config(), simulated="--simulado" in rest, include_test="--somente-teste" in rest, watch_stdin="--stdin-watch" in rest, headless="--headless" in rest)
         if cmd in {"secrets", "accounts"}:
             from . import cli_accounts
 

@@ -155,6 +155,12 @@ class CoreCommands:
         self.h.loop = self.loop
         return self.h.voice_cloud(op, **a)
 
+    def cmd_ask(self, text: str, id: str | None = None):
+        ask = getattr(self.loop, "ask", None)
+        if ask is None:
+            raise ValueError("Pedidos por texto só existem no modo `fidus daemon --headless` (testes no Docker/navegador).")
+        return ask(text, id)
+
     def cmd_local_models(self):
         self.h.loop = self.loop
         return self.h.local_models()
