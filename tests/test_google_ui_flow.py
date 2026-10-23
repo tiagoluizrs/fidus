@@ -68,7 +68,8 @@ def test_retorno_do_login_chega_ao_fluxo_e_a_porta_volta_na_hora():
     creds = google_auth.run_flow_via_ui(flow, port, lambda u: (urls.append(u), inner(u)), timeout_s=10)
     assert creds.refresh_token == "R" and urls == ["https://accounts.google.com/o/oauth2/auth?x=1"]
     assert flow.redirect_uri == f"http://localhost:{port}/" and "code=abc" in flow.fetched and flow.fetched.startswith("https://")
-    with socket.socket() as s:  # a porta já pode ser usada de novo
+    with socket.socket() as s:  # a porta já pode ser usada de novo (reutilizável, como o próprio servidor faz)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(("0.0.0.0", port))
 
 
@@ -85,6 +86,7 @@ def test_sem_retorno_vira_erro_claro_e_libera_a_porta():
     with pytest.raises(NotConnected, match="não foi concluído"):
         google_auth.run_flow_via_ui(FakeFlow(), port, lambda u: None, timeout_s=0.3)
     with socket.socket() as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(("0.0.0.0", port))
 
 
