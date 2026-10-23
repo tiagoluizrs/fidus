@@ -1,5 +1,6 @@
 """Núcleo REAL sem áudio (`fidus daemon --headless`): o mesmo modelo, ferramentas, permissões e configurações,
-mas o pedido chega por texto (comando `ask`) em vez do microfone, e a resposta volta como legendas.
+mas os pedidos chegam por TEXTO (comando `ask`) ou pela fala captada no microfone do NAVEGADOR (`ask_audio`), e a resposta
+volta como legendas.
 
 Serve para testar tudo no Docker/navegador, onde não há microfone nem voz do Windows.
 """
@@ -8,7 +9,11 @@ from __future__ import annotations
 
 import base64
 import binascii
+import difflib
+import re
 import threading
+import time
+import unicodedata
 from types import SimpleNamespace
 
 from ..assistant import build_assistant
@@ -16,8 +21,31 @@ from ..config import Config
 from .confirm import ConfirmBroker
 
 
+def _norm(text: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c))
+
+
+def match_wake(text: str, names: dict[str, str]) -> tuple[str | None, str]:
+    """Procura o nome de um personagem nas primeiras palavras ("ei Alfred, que horas são"). Aceita variações de como o
+    Whisper escreve ("Alfredo", "Dona", "Jarbas"). Devolve (id do personagem ou None, o resto do pedido)."""
+    words = text.split()
+    normalized = {cid: _norm(name) for cid, name in names.items()}
+    for i, word in enumerate(words[:4]):
+        token = re.sub(r"\W", "", _norm(word))
+        if not token:
+            continue
+        hit = difflib.get_close_matches(token, list(normalized.values()), n=1, cutoff=0.72)
+        if hit:
+            cid = next(c for c, n in normalized.items() if n == hit[0])
+            return cid, " ".join(words[i + 1:]).lstrip(" ,.:;!?-—").strip()
+    return None, text
+
+
 class HeadlessLoop:
     """Faz o papel do ListenLoop para os comandos da interface (silenciar, chamados, confirmação) sem usar áudio."""
+
+    MAX_AUDIO_S = 20  # o limite de 1 MB por mensagem do canal local comporta cerca de 25 s; 20 s deixa folga
+    SAMPLE_RATE = 16_000
 
     def __init__(self, config: Config, events, state, provider=None):
         self.config, self.events, self.state = config, events, state
@@ -27,10 +55,23 @@ class HeadlessLoop:
         self.handler = SimpleNamespace(orchestrator=self.orchestrator)  # onde o `_apply_runtime` procura o provedor
         self.manager = self.tts = self.speaker = None  # sem microfone nem voz
         self.headless = True  # a interface mostra links (login do Google) em vez de o núcleo abrir o navegador
-        state.mic = "off"  # sem microfone no núcleo: o navegador capta a voz e envia o áudio (`ask_audio`)
+        self.mic_on = False  # o microfone é o do navegador: ele avisa quando liga (`browser_mic`)
+        state.mic = "off"
         self.transcriber = None  # Whisper, criado só na primeira fala (baixa e carrega o modelo)
+        self._followup_until = 0.0  # depois de uma resposta, aceita uma continuação sem chamar o nome de novo
         self._busy = threading.Lock()
         self._stop = threading.Event()
+
+    def _idle_mic(self) -> str:
+        return "passive" if self.mic_on else "off"
+
+    def set_browser_mic(self, on: bool) -> None:
+        self.mic_on = bool(on)
+        if self._busy.acquire(blocking=False):  # só mexe no anel se nada está acontecendo
+            try:
+                self.events.emit("state", state="idle", mic=self._idle_mic())
+            finally:
+                self._busy.release()
 
     # ---- pedido por texto ----
 
@@ -44,11 +85,14 @@ class HeadlessLoop:
         threading.Thread(target=self._run, args=(text, cid), daemon=True, name="fidus-ask").start()
         return {"started": True, "character": cid}
 
-    MAX_AUDIO_S = 20  # o limite de 1 MB por mensagem do canal local comporta cerca de 25 s; 20 s deixa folga
-    SAMPLE_RATE = 16_000
+    # ---- fala captada pelo navegador ----
 
-    def ask_audio(self, pcm_b64: str, character: str | None = None) -> dict:
-        """Fala captada pelo microfone do NAVEGADOR (PCM 16 bits, mono, 16 kHz, em base64): transcreve com o Whisper local."""
+    def ask_audio(self, pcm_b64: str, character: str | None = None, wake: bool = False) -> dict:
+        """Fala do microfone do NAVEGADOR (PCM 16 bits, mono, 16 kHz, base64), transcrita pelo Whisper local.
+
+        `wake=True` é o microfone sempre ligado: só age se a fala começar chamando um personagem ("ei Alfred...") ou se
+        for a continuação de uma conversa em andamento; qualquer outra coisa é ignorada, como no app instalado.
+        """
         import numpy as np
 
         try:
@@ -63,17 +107,23 @@ class HeadlessLoop:
         if len(audio) > self.MAX_AUDIO_S * self.SAMPLE_RATE:
             raise ValueError(f"Áudio longo demais (máximo {self.MAX_AUDIO_S} s).")
         if not self._busy.acquire(blocking=False):
+            if wake:
+                return {"ignored": "ocupado"}  # microfone aberto: falas durante a resposta são descartadas em silêncio
             raise ValueError("Ainda estou respondendo ao pedido anterior.")
         cid = self.persona.resolve_id(character or self.state.character_id)
-        threading.Thread(target=self._run_audio, args=(audio.astype(np.float32) / 32768.0, cid), daemon=True, name="fidus-ask-audio").start()
+        threading.Thread(target=self._run_audio, args=(audio.astype(np.float32) / 32768.0, cid, wake), daemon=True, name="fidus-ask-audio").start()
         return {"started": True, "character": cid}
 
-    def _run_audio(self, audio, cid: str) -> None:
+    def _names(self) -> dict[str, str]:
+        return {cid: self.persona.ui_profile(cid)["name"] for cid in self.persona.ids()}
+
+    def _run_audio(self, audio, cid: str, wake: bool) -> None:
         emit = self.events.emit
         try:
-            emit("character", **self.persona.ui_profile(cid))
-            emit("state", state="thinking", mic="paused")
-            emit("caption", role="user", text="Transcrevendo…", final=False)
+            if not wake:
+                emit("character", **self.persona.ui_profile(cid))
+                emit("state", state="thinking", mic="paused")
+                emit("caption", role="user", text="Transcrevendo…", final=False)
             if self.transcriber is None:
                 from ..voice.stt import Transcriber
 
@@ -81,23 +131,46 @@ class HeadlessLoop:
             text = self.transcriber.transcribe(audio).strip()
         except Exception as e:
             emit("error", message=f"Não consegui transcrever o áudio ({type(e).__name__}: {e}).")
-            emit("state", state="idle", mic="off")
+            emit("state", state="idle", mic=self._idle_mic())
             self._busy.release()
             return
+        if wake:
+            target, rest = match_wake(text, self._names())
+            if target is None and time.monotonic() > self._followup_until:
+                emit("state", state="idle", mic=self._idle_mic())  # não era comigo: segue escutando, sem alarde
+                self._busy.release()
+                return
+            if target:
+                cid, text = target, rest
+            emit("character", **self.persona.ui_profile(cid))
+            if not text:  # só chamou ("ei Alfred"): responde com a fala de início e espera o pedido
+                self._acknowledge(cid)
+                return
         if not text:
             emit("caption", role="user", text="", final=True)
             emit("error", message="Não entendi o áudio. Fale mais perto do microfone e tente de novo.")
-            emit("state", state="idle", mic="off")
+            emit("state", state="idle", mic=self._idle_mic())
             self._busy.release()
             return
         self._run(text, cid, announce_listening=False)
+
+    def _acknowledge(self, cid: str) -> None:
+        emit = self.events.emit
+        line = self.persona.phrase(cid, "inicio") or "Pode falar."
+        emit("state", state="speaking", mic="paused")
+        emit("caption", role="user", text="", final=True)
+        emit("caption", role="assistant", text=line, final=False)
+        emit("caption", role="assistant", text="", final=True)
+        self._followup_until = time.monotonic() + max(self.config.wake.wait_speech_s, 8.0)
+        emit("state", state="idle", mic=self._idle_mic())
+        self._busy.release()
 
     def _run(self, text: str, cid: str, announce_listening: bool = True) -> None:
         emit = self.events.emit
         try:
             emit("character", **self.persona.ui_profile(cid))
             if announce_listening:
-                emit("state", state="listening", mic="off")
+                emit("state", state="listening", mic=self._idle_mic())
             emit("caption", role="user", text=text, final=True)
             emit("state", state="thinking", mic="paused")
             speaking = False
@@ -114,13 +187,14 @@ class HeadlessLoop:
         except Exception as e:  # o erro aparece na tela em vez de derrubar o núcleo
             emit("error", message=f"{type(e).__name__}: {e}")
         finally:
-            emit("state", state="idle", mic="off")
+            self._followup_until = time.monotonic() + max(self.config.wake.followup_s, 6.0)
+            emit("state", state="idle", mic=self._idle_mic())
             self._busy.release()
 
     # ---- o que a interface controla ----
 
     def set_muted(self, value: bool) -> None:
-        self.events.emit("state", state="muted" if value else "idle", mic="muted" if value else "off")
+        self.events.emit("state", state="muted" if value else "idle", mic="muted" if value else self._idle_mic())
 
     def set_calls_enabled(self, value: bool) -> None:
         self.events.emit("calls", enabled=value, until=None)

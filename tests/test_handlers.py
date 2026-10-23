@@ -57,7 +57,7 @@ def test_lista_e_perfil_completo_com_padroes(cmds):
     lst = call(cmds, "characters", op="list")["characters"]
     assert [c["id"] for c in lst] == ["alfred", "donna", "jarbis"] and lst[0]["is_default"] and not lst[0]["edited"]
     p = call(cmds, "characters", op="get", id="alfred")
-    assert p["personality"]["controls"]["formalidade"] == {"value": 90, "default": 90}
+    assert p["personality"]["controls"]["formalidade"] == {"value": 70, "default": 70}
     assert set(p["phrases"]) == {"inicio", "concluir", "confirmar", "erro", "despedida"}
     assert len(p["phrases"]["inicio"]["items"]) == 7 and p["address"]["mode"] == "fixed" and "{saudacao}" in p["variables"]
     assert p["voice"]["engine"] == "sapi" and p["ring"]["dark"]
