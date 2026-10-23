@@ -149,3 +149,6 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 24px; }
 .cloud, .piper { display: grid; gap: 12px; margin-top: 12px; }
 .field textarea { flex: 1; min-width: 220px; resize: vertical; }
 progress { width: 100%; height: 8px; accent-color: var(--accent); }
+
+.file-btn { cursor: pointer; display: inline-flex; align-items: center; }
+.file-btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -39,6 +39,7 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
   let nextMem = 1;
   let calls_state = { enabled: true, until: null as number | null };
   let key = { stored: true, source: "cofre" };
+  let googleCredentials = true;
   let services: Obj[] = init.services ?? [
     { id: "gmail", kind: "email", name: "Gmail", connected: true, write: false, write_label: "criar rascunhos" },
     { id: "outlook", kind: "email", name: "Outlook", coming_soon: true },
@@ -127,7 +128,9 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
         return fail("op");
       }
       case "accounts": {
-        if (a.op === "list") return ok({ google_credentials: true, services });
+        if (a.op === "list") return ok({ google_credentials: googleCredentials, services });
+        if (a.op === "google_credentials") { if (!String(a.json).includes("installed")) return fail("O arquivo não tem os campos esperados."); googleCredentials = true; return ok({ google_credentials: true, services }); }
+        if (a.op === "google_credentials_remove") { googleCredentials = false; return ok({ google_credentials: false, services }); }
         const s = services.find((x) => x.id === a.service)!;
         if (a.op === "connect") { if (a.service === "slack") { if (!a.token) return fail("Cole o token de usuário do Slack (xoxp-...)."); s.connected = true; s.write = a.write === true; return ok({ google_credentials: true, services }); } return ok({ started: true }); }
         if (a.op === "disconnect") { s.connected = false; return ok({ google_credentials: true, services }); }

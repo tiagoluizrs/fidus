@@ -218,3 +218,42 @@ describe("Escutar chamados", () => {
     await waitFor(() => expect(screen.getByRole("switch", { name: "Escutar chamados" })).toHaveAttribute("aria-checked", "true"));
   });
 });
+
+describe("tela Contas: credenciais do Google e login pelo navegador", () => {
+  const arquivo = (texto: string) => {
+    const f = new File([texto], "credentials.json", { type: "application/json" });
+    Object.defineProperty(f, "text", { value: async () => texto }); // o jsdom não implementa File.text()
+    return f;
+  };
+
+  it("envia o credentials.json pela tela em vez de pedir para copiar o arquivo", async () => {
+    const f = installFakeCore();
+    const user = await open("Contas");
+    await user.click(await screen.findByRole("button", { name: "Remover" })); // começa com o arquivo; remove para simular a falta
+    expect(await screen.findByText("Falta enviar")).toBeInTheDocument();
+    await user.upload(screen.getByLabelText("Enviar o credentials.json"), arquivo('{"installed":{"client_id":"x"}}'));
+    await waitFor(() => expect(sent(f.calls, "accounts", "google_credentials")).toHaveLength(1));
+    expect(await screen.findByText("Enviado")).toBeInTheDocument();
+  });
+
+  it("arquivo inválido mostra o erro do núcleo e continua faltando", async () => {
+    installFakeCore();
+    const user = await open("Contas");
+    await user.click(await screen.findByRole("button", { name: "Remover" }));
+    await user.upload(screen.getByLabelText("Enviar o credentials.json"), arquivo("nao e o arquivo certo"));
+    expect(await screen.findByText(/campos esperados/)).toBeInTheDocument();
+    expect(screen.getByText("Falta enviar")).toBeInTheDocument();
+  });
+
+  it("mostra o link de autorização só se for do Google", async () => {
+    const f = installFakeCore();
+    await open("Contas");
+    await screen.findByText("Credenciais do Google");
+    f.emit({ type: "open_url", url: "https://evil.example/phish" });
+    expect(screen.queryByRole("link", { name: /página de autorização/ })).toBeNull();
+    f.emit({ type: "open_url", url: "https://accounts.google.com/o/oauth2/auth?x=1" });
+    const link = await screen.findByRole("link", { name: /página de autorização/ });
+    expect(link).toHaveAttribute("href", "https://accounts.google.com/o/oauth2/auth?x=1");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
+  });
+});

@@ -24,6 +24,7 @@ class HeadlessLoop:
         self.orchestrator, self.persona, _ = build_assistant(config, confirm, provider=provider)
         self.handler = SimpleNamespace(orchestrator=self.orchestrator)  # onde o `_apply_runtime` procura o provedor
         self.manager = self.tts = self.speaker = None  # sem microfone nem voz
+        self.headless = True  # a interface mostra links (login do Google) em vez de o núcleo abrir o navegador
         self._busy = threading.Lock()
         self._stop = threading.Event()
 

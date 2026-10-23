@@ -578,3 +578,70 @@ def test_motores_de_voz_aceitos_incluem_a_voz_propria(cmds):
     assert call(cmds, "characters", op="get", id="donna")["voice"]["engine"] == "propria"
     with pytest.raises(ValueError):
         call(cmds, "characters", op="set_voice", id="donna", engine="outro")
+
+
+# ---------- credentials.json do Google pela tela ----------
+
+DESKTOP = json.dumps({"installed": {
+    "client_id": "abc.apps.googleusercontent.com", "client_secret": "segredo", "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token", "redirect_uris": ["http://localhost"]}})
+
+
+def test_envia_o_credentials_json_pela_tela_e_remove(cmds, config):
+    assert call(cmds, "accounts", op="list")["google_credentials"] is False
+    st = call(cmds, "accounts", op="google_credentials", json=DESKTOP)
+    assert st["google_credentials"] is True and config.google_credentials_path.is_file()
+    assert json.loads(config.google_credentials_path.read_text(encoding="utf-8"))["installed"]["client_id"].startswith("abc")
+    assert call(cmds, "accounts", op="google_credentials_remove")["google_credentials"] is False
+
+
+@pytest.mark.parametrize("texto,trecho", [
+    ("isso nao e json", "JSON válido"),
+    (json.dumps({"web": {"client_id": "x"}}), "Web"),
+    (json.dumps({"installed": {"client_id": "x"}}), "campos esperados"),
+    (json.dumps({"installed": {"client_id": "x", "client_secret": "y", "auth_uri": "https://evil.com/auth", "token_uri": "https://oauth2.googleapis.com/token"}}), "não são do Google"),
+    ("{" + " " * 25000 + "}", "grande demais"),
+])
+def test_credentials_invalido_e_recusado_e_nada_e_gravado(cmds, config, texto, trecho):
+    with pytest.raises(ValueError, match=trecho):
+        call(cmds, "accounts", op="google_credentials", json=texto)
+    assert not config.google_credentials_path.exists()
+
+
+def test_login_do_google_no_modo_headless_entrega_o_link_e_usa_porta_fixa(cmds, config, monkeypatch):
+    import time
+    from types import SimpleNamespace
+
+    from fidus.core.services import google_auth
+
+    call(cmds, "accounts", op="google_credentials", json=DESKTOP)
+    FakeVault().install(monkeypatch)
+    seen = {}
+
+    class Flow:
+        def __init__(self, path, scopes):
+            self.scopes = scopes
+
+        def run_local_server(self, **kw):
+            seen.update(kw)
+            import webbrowser
+
+            webbrowser.get(kw["browser"]).open("https://accounts.google.com/o/oauth2/auth?x=1")
+            return SimpleNamespace(refresh_token="R", client_id="c", client_secret="s", token_uri=None)
+
+    import sys
+    import types
+
+    mod = types.ModuleType("google_auth_oauthlib.flow")
+    mod.InstalledAppFlow = SimpleNamespace(from_client_secrets_file=Flow)
+    monkeypatch.setitem(sys.modules, "google_auth_oauthlib", types.ModuleType("google_auth_oauthlib"))
+    monkeypatch.setitem(sys.modules, "google_auth_oauthlib.flow", mod)
+    cmds.loop = SimpleNamespace(headless=True, handler=None)
+    cmds.h.loop = cmds.loop
+    call(cmds, "accounts", op="connect", service="agenda")
+    for _ in range(100):
+        if any(t == "accounts" and d["status"] == "connected" for t, d in cmds.sink.seen):
+            break
+        time.sleep(0.02)
+    assert ("open_url", {"url": "https://accounts.google.com/o/oauth2/auth?x=1"}) in cmds.sink.seen
+    assert seen["port"] == google_auth.OAUTH_PORT and seen["bind_addr"] == "0.0.0.0" and seen["host"] == "localhost"

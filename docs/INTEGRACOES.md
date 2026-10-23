@@ -17,6 +17,10 @@ uv run fidus --check-key
 
 Abra *Painel de Controle > Gerenciador de Credenciais > Credenciais do Windows* e confira as entradas `fidus/...`.
 
+> **Pelo painel:** em Configurações > Contas > **Credenciais do Google**, use "Enviar arquivo" e escolha o `credentials.json`
+> baixado neste passo (tipo "App para computador"); não precisa copiar nada para a pasta de dados. No teste com Docker, o
+> link de autorização do Google aparece na própria tela e o retorno do login usa a porta 8085.
+
 ## 1. Google (Agenda e Gmail)
 
 O Fidus usa um **cliente OAuth seu**, criado no seu projeto do Google Cloud. Um cliente serve para Agenda e Gmail.

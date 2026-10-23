@@ -6,6 +6,7 @@ Cada comando do protocolo recebe `{op: "...", ...}`. Tudo é validado aqui; a in
 from __future__ import annotations
 
 import json
+import os
 import platform
 import sys
 import threading
@@ -22,6 +23,7 @@ from ..characters.store import ADDRESS, CharacterStore
 from ..memory.markdown_store import SECTIONS, TAGS
 from ..memory.service import get_memory
 from ..services import google_auth
+from ..services.base import NotConnected
 
 VERSION = "0.1.0"
 MAX_ITEM = 300
@@ -236,6 +238,25 @@ class Handlers:
     def accounts(self, op: str = "list", **a) -> dict:
         if op == "list":
             return self._accounts_status()
+        if op == "google_credentials":  # o credentials.json enviado pela tela (em vez de copiar o arquivo à mão)
+            text = str(a.get("json", ""))
+            if len(text) > 20000:
+                raise ValueError("Arquivo grande demais para ser o credentials.json.")
+            try:
+                google_auth.validate_client_file(text)
+            except NotConnected as e:
+                raise ValueError(str(e)) from e
+            path = self.config.google_credentials_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+            return self._accounts_status()
+        if op == "google_credentials_remove":
+            self.config.google_credentials_path.unlink(missing_ok=True)
+            return self._accounts_status()
         service = a.get("service")
         if service not in ("gmail", "agenda", "slack"):
             raise ValueError("Serviço inválido.")
@@ -253,7 +274,7 @@ class Handlers:
                 self.emit("accounts", service=service, status="connected", message=f"{info.get('team', '')}")
                 return self._accounts_status()
             self._connect_google(service, write)
-            return {"started": True, "message": "Autorize no navegador que vai abrir."}
+            return {"started": True, "message": "Autorize no navegador que vai abrir." if not getattr(self.loop, "headless", False) else "Clique no link de autorização que vai aparecer."}
         if op == "disconnect":
             if service == "slack":
                 vault.delete_secret(vault.SLACK_TOKEN)
@@ -282,7 +303,8 @@ class Handlers:
 
         def work() -> None:
             try:
-                google_auth.connect(self.config, svc, write)
+                open_url = (lambda url: self.emit("open_url", url=url)) if getattr(self.loop, "headless", False) else None
+                google_auth.connect(self.config, svc, write, open_url=open_url)
                 self.save_settings({("contas.google.agenda_escrita" if service == "agenda" else "contas.google.gmail_rascunhos"): write})
                 self.emit("accounts", service=service, status="connected", message="")
             except Exception as e:  # falta o credentials.json, o usuário fechou o navegador, etc.
