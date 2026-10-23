@@ -116,6 +116,12 @@ class Orchestrator:
             self._log(call, None, "ferramenta_desconhecida")
             return ToolResult(call.id, f"Ferramenta '{call.name}' não existe.", True)
 
+        try:
+            tool.precheck(call.arguments, self.config)  # não adianta pedir confirmação de algo que não pode acontecer
+        except ToolError as e:
+            self._log(call, tool, "bloqueado", str(e))
+            return ToolResult(call.id, str(e), True)
+
         if needs_confirmation(tool, call.arguments, self.config, self._tainted):
             if not ask(tool, call.arguments, self.confirm):
                 self._log(call, tool, "negado")
