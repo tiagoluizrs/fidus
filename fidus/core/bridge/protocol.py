@@ -14,7 +14,7 @@ STATES = ("idle", "listening", "thinking", "speaking", "muted")
 MIC_STATES = ("passive", "recording", "paused", "muted", "off")
 
 # Eventos núcleo -> interface (o campo "type" é o nome do evento).
-EVENTS = ("ready", "status", "state", "characters_changed", "memory_changed", "accounts", "level", "caption", "character", "confirm", "confirm_done", "model", "calls", "settings", "open_url", "voice_mode", "speak_audio", "model_pull", "voice_setup", "voice_record", "error")
+EVENTS = ("ready", "status", "state", "characters_changed", "memory_changed", "accounts", "level", "caption", "character", "confirm", "confirm_done", "model", "calls", "settings", "open_url", "voice_mode", "speak_audio", "conversation", "model_pull", "voice_setup", "voice_record", "error")
 
 # Comandos interface -> núcleo ({"type":"cmd","id":...,"name":...,"args":{...}}).
 COMMANDS = (

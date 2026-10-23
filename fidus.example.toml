@@ -26,10 +26,10 @@ salvar_audio_debug = false  # o áudio fica só na memória; true grava .wav par
 [chamados]
 # Palavra de ativação. Os modelos ficam em models/wakewords/ (veja docs/WAKEWORDS.md).
 intervalo_s = 2.0           # mínimo entre duas ativações
-silencio_fim_s = 1.2        # silêncio que encerra a gravação
-max_gravacao_s = 15
-esperar_fala_s = 5.0        # depois do chamado, quanto esperar você começar a falar
-continuacao_s = 5.0         # depois da resposta, quanto esperar uma continuação sem chamar de novo
+silencio_fim_s = 2.5        # pausa que encerra a fala (tempo para pensar no meio da frase)
+max_gravacao_s = 60
+esperar_fala_s = 60.0       # depois do chamado, quanto esperar você começar a falar
+continuacao_s = 60.0        # depois da resposta, quanto ficar ouvindo sem chamar de novo (1 min sem atividade)
 som_ao_ouvir = false        # bipe ao começar a ouvir
 atalho_silenciar = "ctrl+alt+m"   # fecha/abre o microfone
 personagem_padrao = "alfred"

@@ -239,8 +239,8 @@ chamado, e vem desligado.
 
 ### Configuração (`fidus.toml`, seção `[chamados]`)
 
-Veja `fidus.example.toml`. Resumo: `intervalo_s` (2,0), `silencio_fim_s` (1,2), `max_gravacao_s` (15),
-`esperar_fala_s` (5), `continuacao_s` (5), `som_ao_ouvir` (false), `atalho_silenciar`, e uma tabela por palavra
+Veja `fidus.example.toml`. Resumo: `intervalo_s` (2,0), `silencio_fim_s` (2,5), `max_gravacao_s` (60),
+`esperar_fala_s` (60), `continuacao_s` (60), `som_ao_ouvir` (false), `atalho_silenciar`, e uma tabela por palavra
 (`modelo`, `personagem`, `limiar`, `ativa`, `somente_teste`). Limiar é **por palavra**.
 
 ### Medições da escuta passiva

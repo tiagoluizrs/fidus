@@ -40,6 +40,35 @@
       return navigator.permissions.query({ name: "microphone" }).then(function (p) { return p.state === "prompt" ? "not-determined" : p.state; }).catch(function () { return "unknown"; });
     },
     restartCore: function () { alert("Reinicie com: docker compose restart web"); return Promise.resolve(); },
+    // Teste de entrada (só no navegador): grava alguns segundos do microfone, mostra o nível na tela e toca de volta o que captou.
+    micTest: async function (seconds) {
+      var secs = seconds || 5, stream;
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+      catch (e) { alert("Não consegui usar o microfone: " + (e && e.message ? e.message : e) + "\nPermita o microfone para este endereço no navegador (cadeado ao lado do endereço)."); return; }
+      var Ctx = window.AudioContext || window.webkitAudioContext, ctx = new Ctx();
+      if (ctx.state === "suspended") await ctx.resume();
+      var src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(2048, 1, 1), chunks = [], mute = ctx.createGain();
+      mute.gain.value = 0; // o ScriptProcessor só roda ligado à saída; sem som, para não dar eco enquanto grava
+      proc.onaudioprocess = function (ev) {
+        var d = new Float32Array(ev.inputBuffer.getChannelData(0)), sum = 0;
+        for (var i = 0; i < d.length; i++) sum += d[i] * d[i];
+        var lvl = Math.min(1, Math.sqrt(sum / d.length) * 6);
+        chunks.push(d);
+        listeners.forEach(function (cb) { cb({ type: "level", values: [lvl, lvl * 0.85, lvl * 0.7] }); });
+      };
+      src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+      await new Promise(function (r) { setTimeout(r, secs * 1000); });
+      proc.disconnect(); src.disconnect(); stream.getTracks().forEach(function (t) { t.stop(); });
+      var total = chunks.reduce(function (n, c) { return n + c.length; }, 0), all = new Float32Array(total), off = 0, peak = 0;
+      chunks.forEach(function (c) { all.set(c, off); off += c.length; });
+      for (var j = 0; j < all.length; j++) peak = Math.max(peak, Math.abs(all[j]));
+      listeners.forEach(function (cb) { cb({ type: "level", values: [0, 0, 0] }); });
+      if (peak < 0.01) { alert("O microfone captou quase nada (volume muito baixo). Confira se é o microfone certo no navegador e o volume de entrada do sistema."); await ctx.close(); return; }
+      var buf = ctx.createBuffer(1, all.length, ctx.sampleRate); buf.copyToChannel(all, 0);
+      var play = ctx.createBufferSource(); play.buffer = buf; play.connect(ctx.destination);
+      await new Promise(function (r) { play.onended = r; play.start(); }); // toca de volta: é o que o Fidus escutaria
+      await ctx.close();
+    },
     copyText: function (t) { return navigator.clipboard.writeText(t); },
   };
 
@@ -98,6 +127,8 @@
       var a = amb; amb = null; seg = null; pre = []; loud = 0;
       a.proc.disconnect(); a.src.disconnect(); a.stream.getTracks().forEach(function (t) { t.stop(); }); a.ctx.close();
     }
+    var conv = { until: 0, silence: 2.5 };
+    listeners.add(function (e) { if (e.type === "conversation") conv = { until: Date.now() + e.seconds * 1000, silence: e.silence_s }; });
     function idleState() { emit({ type: "state", state: "idle", mic: micOn ? "passive" : "off" }); }
 
     function onBlock(ev) {
@@ -121,8 +152,10 @@
         var lvl = Math.min(1, rms * 6);
         emit({ type: "level", values: [lvl, lvl * 0.85, lvl * 0.7] });
         if (!ptt) {
-          seg.quiet = rms < seg.thr * 0.7 ? seg.quiet + 1 : 0;
-          if (seg.quiet >= 7 || seg.total >= MAX_S * amb.ctx.sampleRate) finish();
+          seg.level = Math.max((seg.level || 0) * 0.997, rms); // volume da fala: em sala barulhenta o silêncio é relativo a ele, não só ao ruído de fundo
+          seg.quiet = rms < Math.max(seg.thr * 0.7, seg.level * 0.2) ? seg.quiet + 1 : 0;
+          var quietLimit = Math.ceil((conv.until > Date.now() ? conv.silence : 0.9) * amb.ctx.sampleRate / BLOCK); // aberta a conversa: mais tempo para pensar
+          if (seg.quiet >= quietLimit || seg.total >= MAX_S * amb.ctx.sampleRate) finish();
         }
       }
     }

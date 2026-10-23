@@ -94,6 +94,7 @@ class HeadlessLoop:
         self._tts = None  # motor de voz (Piper/ElevenLabs), criado só quando um personagem usa
         self._followup_until = 0.0  # depois de uma resposta, aceita uma continuação sem chamar o nome de novo
         self._busy = threading.Lock()
+        self._stt_lock = threading.Lock()
         self._stop = threading.Event()
 
     # ---- voz do personagem (Piper ou nuvem), tocada pelo navegador ----
@@ -154,8 +155,31 @@ class HeadlessLoop:
     def _idle_mic(self) -> str:
         return "passive" if self.mic_on else "off"
 
+    def _open_conversation(self, seconds: float) -> None:
+        """Mantém a escuta aberta (sem precisar chamar de novo) e avisa a tela, que usa a mesma pausa para pensar."""
+        seconds = max(float(seconds), 1.0)
+        self._followup_until = time.monotonic() + seconds
+        self.events.emit("conversation", seconds=seconds, silence_s=self.config.wake.silence_s)
+
+    def _warm_transcriber(self) -> None:
+        """Carrega o Whisper assim que o microfone liga: a primeira fala não pode ser perdida enquanto o modelo carrega."""
+        def load():
+            try:
+                with self._stt_lock:
+                    if self.transcriber is None:
+                        from ..voice.stt import Transcriber
+
+                        self.transcriber = Transcriber(self.config)
+            except Exception as e:  # noqa: BLE001 - a falha aparece quando a primeira fala chegar
+                self.events.emit("error", message=f"Não consegui carregar o reconhecimento de voz ({type(e).__name__}: {e}).")
+
+        if self.transcriber is None:
+            threading.Thread(target=load, daemon=True, name="fidus-whisper-warm").start()
+
     def set_browser_mic(self, on: bool) -> None:
         self.mic_on = bool(on)
+        if self.mic_on:
+            self._warm_transcriber()
         if self._busy.acquire(blocking=False):  # só mexe no anel se nada está acontecendo
             try:
                 self.events.emit("state", state="idle", mic=self._idle_mic())
@@ -213,10 +237,13 @@ class HeadlessLoop:
                 emit("character", **self.persona.ui_profile(cid))
                 emit("state", state="thinking", mic="paused")
                 emit("caption", role="user", text="Transcrevendo…", final=False)
-            if self.transcriber is None:
-                from ..voice.stt import Transcriber
+            if wake and time.monotonic() <= self._followup_until:
+                emit("caption", role="user", text="Transcrevendo…", final=False)  # conversa aberta: mostra que está ouvindo
+            with self._stt_lock:  # não carrega o Whisper duas vezes se o aquecimento ainda estiver rodando
+                if self.transcriber is None:
+                    from ..voice.stt import Transcriber
 
-                self.transcriber = Transcriber(self.config)
+                    self.transcriber = Transcriber(self.config)
             text = self.transcriber.transcribe(audio).strip()
         except Exception as e:
             emit("error", message=f"Não consegui transcrever o áudio ({type(e).__name__}: {e}).")
@@ -254,7 +281,7 @@ class HeadlessLoop:
         emit("caption", role="user", text="", final=True)
         emit("caption", role="assistant", text=line, final=False)
         emit("caption", role="assistant", text="", final=True)
-        self._followup_until = time.monotonic() + max(self.config.wake.wait_speech_s, 8.0)
+        self._open_conversation(self.config.wake.wait_speech_s)
         emit("state", state="idle", mic=self._idle_mic())
         self._busy.release()
 
@@ -287,7 +314,7 @@ class HeadlessLoop:
         except Exception as e:  # o erro aparece na tela em vez de derrubar o núcleo
             emit("error", message=f"{type(e).__name__}: {e}")
         finally:
-            self._followup_until = time.monotonic() + max(self.config.wake.followup_s, 6.0)
+            self._open_conversation(self.config.wake.followup_s)
             emit("state", state="idle", mic=self._idle_mic())
             self._busy.release()
 

@@ -118,6 +118,7 @@ def test_chamado_e_personagem_vao_para_o_log_com_o_tempo_ate_gravar(rig):
 def test_continuacao_sem_chamar_de_novo(rig):
     # fala, silêncio curto de 1,2 s, e uma segunda fala dentro dos 5 s de continuação
     rig.config.wake.followup_s = 5.0
+    rig.config.wake.silence_s = 1.2  # pausa curta: a primeira fala fecha e a segunda vem na janela de continuação
     rig.wake(script=((SPEECH, 6), (SILENCE, 17), (SPEECH, 6), (SILENCE, 30)))
     assert len(rig.handler.calls) == 2
     assert [c[2] for c in rig.handler.calls] == ["donna", "donna"]  # mesmo personagem na continuação
@@ -284,3 +285,10 @@ def test_chamado_por_fala_com_despedida_encerra_sem_esperar_continuacao(rig):
     rig.handler.handle_text = lambda text, end, character: True
     rig.loop.dispatch(("wake", Activation(DONNA, 1.0, time.perf_counter(), text="tchau")))
     assert rig.loop.state.value == "sleeping" and not rig.handler.calls if hasattr(rig.handler, "calls") else True
+
+
+def test_pausa_para_pensar_no_meio_da_frase_nao_corta_a_fala(rig):
+    # padrão: 2,5 s de pausa. Um silêncio de 1,2 s no meio da frase não encerra: é uma única fala
+    rig.config.wake.followup_s = 0.4
+    rig.wake(script=((SPEECH, 6), (SILENCE, 17), (SPEECH, 6), (SILENCE, 40)))
+    assert len(rig.handler.calls) == 1

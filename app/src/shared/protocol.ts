@@ -55,6 +55,7 @@ export type CoreEvent =
   | { type: "voice_setup"; what: string; state: "progress" | "done" | "error"; done?: number; total?: number; message?: string }
   | { type: "open_url"; url: string }
   | { type: "voice_mode"; mode: "server" | "browser"; engine: string }
+  | { type: "conversation"; seconds: number; silence_s: number }
   | { type: "speak_audio"; seq: number; text: string; wav: string }
   | { type: "model_pull"; what: string; state: "progress" | "done" | "error"; done?: number; total?: number; message?: string }
   | { type: "voice_record"; state: "recording" | "done"; elapsed: number; total: number }
@@ -100,6 +101,8 @@ export interface Reply {
 
 /** API mínima que o preload expõe ao renderer. O renderer nunca vê o token nem fala com o núcleo diretamente. */
 export interface FidusApi {
+  /** Só no teste pelo navegador: grava alguns segundos do microfone, mostra o nível e toca de volta. */
+  micTest?: (seconds?: number) => Promise<void>;
   onEvent(cb: (e: CoreEvent) => void): () => void;
   command(name: CommandName, args?: Record<string, unknown>): Promise<Reply>;
   getSnapshot(): Promise<Snapshot | null>;

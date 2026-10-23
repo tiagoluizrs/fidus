@@ -79,10 +79,10 @@ class WakeConfig:
     words: list[WakeWord] = field(default_factory=default_wake_words)
     models_dir: Path = field(default_factory=lambda: PACKAGE_ROOT / "models" / "wakewords")
     cooldown_s: float = 2.0  # intervalo mínimo entre ativações
-    silence_s: float = 1.2  # silêncio que encerra a gravação
-    max_record_s: float = 15.0
-    wait_speech_s: float = 5.0  # após o chamado, quanto esperar o início da fala
-    followup_s: float = 5.0  # após a resposta, quanto esperar uma continuação sem chamar de novo
+    silence_s: float = 2.5  # pausa que encerra a fala (tempo para pensar no meio da frase)
+    max_record_s: float = 60.0
+    wait_speech_s: float = 60.0  # após o chamado, quanto esperar o início da fala
+    followup_s: float = 60.0  # após a resposta, quanto ficar ouvindo sem precisar chamar de novo (1 min sem atividade)
     mode: str = "auto"  # como perceber o chamado: auto (modelo treinado se houver, senão fala) | voz (Whisper) | modelo (só treinado)
     preroll_call_s: float = 0.0  # áudio anterior ao chamado incluído na gravação (0 = só depois dele)
     preroll_ptt_s: float = 0.5
