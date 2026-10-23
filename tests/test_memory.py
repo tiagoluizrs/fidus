@@ -30,14 +30,14 @@ def test_adicionar_listar_editar_apagar(md):
 def test_arquivo_e_markdown_legivel_e_preserva_o_que_o_usuario_escreveu(md):
     md.add("perfil", "Mora em Recife")
     path = md.root / "perfil.md"
-    path.write_text(path.read_text() + "\nTexto solto que o usuário escreveu.\n- Tem um gato chamado Bolt\n")
+    path.write_text(path.read_text(encoding="utf-8") + "\nTexto solto que o usuário escreveu.\n- Tem um gato chamado Bolt\n", encoding="utf-8")
     assert any(e.text == "Tem um gato chamado Bolt" for e in md.list("perfil"))  # linha à mão vale
     new = md.add("perfil", "Trabalha à noite")
-    content = path.read_text()
+    content = path.read_text(encoding="utf-8")
     assert "Texto solto que o usuário escreveu." in content and "# Perfil" in content
     hand = next(e for e in md.list("perfil") if "gato" in e.text)
     edited = md.edit(hand.id, "Tem dois gatos")  # editar uma linha à mão a promove a id explícito
-    assert "id=" + edited.id in path.read_text() and "Texto solto" in path.read_text()
+    assert "id=" + edited.id in path.read_text(encoding="utf-8") and "Texto solto" in path.read_text(encoding="utf-8")
     assert md.get(new.id)
 
 

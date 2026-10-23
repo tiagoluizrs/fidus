@@ -351,8 +351,9 @@ def test_chaves_que_exigem_reiniciar_sao_avisadas(cmds):
 @pytest.mark.parametrize("key,value", [
     ("app.tema", "roxo"), ("app.janela_inatividade_s", 1), ("chamados.sensibilidade", 101), ("voz.velocidade_voz", 11),
     ("voz.modelo_whisper", "gigante"), ("voz.atalho", "   "), ("modelo.claude", "gpt-5"), ("modelo.claude", "claude-../x"),
-    ("modelo.provedor", "local"), ("privacidade.guardar_log_dias", 0), ("arquivos.pastas_liberadas", "C:/x"), ("chaves.anthropic", "sk"),
-    ("voz.responder_em_voz", "sim"),
+    ("modelo.provedor", "gpt"), ("privacidade.guardar_log_dias", 0), ("arquivos.pastas_liberadas", "C:/x"), ("chaves.anthropic", "sk"),
+    ("voz.responder_em_voz", "sim"), ("modelo.local", "qwen3 8b; rm"), ("modelo.local_url", "http://exemplo.com:11434"),
+    ("modelo.local_acoes", "sim"),
 ])
 def test_valores_invalidos_sao_recusados(key, value):
     with pytest.raises(InvalidSetting):
@@ -451,3 +452,38 @@ def test_trocar_a_chave_faz_o_provedor_ler_a_nova(cmds, monkeypatch):
     cmds.loop = SimpleNamespace(handler=SimpleNamespace(orchestrator=SimpleNamespace(provider=prov)))
     call(cmds, "api_key", op="set", value="sk-ant-api03-" + "y" * 30)
     assert prov._client is None and prov._api_key is None
+
+
+# ---------- modelo local (Ollama) ----------
+
+
+def test_liberar_acoes_do_modelo_local_exige_a_ciencia_dos_riscos(cmds, config):
+    with pytest.raises(ValueError, match="entende os riscos"):
+        call(cmds, "set_settings", patch={"modelo.local_acoes": True})
+    assert not config.local_actions_allowed
+    call(cmds, "set_settings", patch={"modelo.local_acoes": True, "modelo.local_acoes_ciente": True})  # os dois juntos
+    assert config.local_actions_allowed
+    call(cmds, "set_settings", patch={"modelo.local_acoes_ciente": False})  # tirar a ciência desliga a liberação
+    e = call(cmds, "get_settings")["effective"]
+    assert e["modelo.local_acoes"] is False and e["modelo.local_acoes_ciente"] is False and not config.local_actions_allowed
+
+
+def test_trocar_para_o_modelo_local_atualiza_o_provedor_e_avisa_a_tela(cmds, config):
+    from types import SimpleNamespace
+
+    from fidus.core.providers.anthropic import AnthropicProvider
+
+    orch = SimpleNamespace(provider=AnthropicProvider("claude-sonnet-5-5"))
+    cmds.loop = SimpleNamespace(handler=SimpleNamespace(orchestrator=orch))
+    call(cmds, "set_settings", patch={"modelo.provedor": "local", "modelo.local": "llama3.1:8b"})
+    assert orch.provider.kind == "local" and orch.provider.model == "llama3.1:8b"
+    assert ("model", {"provider": "local", "name": "llama3.1:8b", "where": "Neste computador"}) in cmds.sink.seen
+    call(cmds, "set_settings", patch={"modelo.provedor": "claude"})
+    assert orch.provider.kind == "claude"
+    assert cmds.sink.seen[-2] == ("model", {"provider": "claude", "name": config.model, "where": "Nuvem"})
+
+
+def test_lista_de_modelos_locais_sem_ollama_nao_quebra(cmds):
+    r = call(cmds, "set_settings", patch={"modelo.local_url": "http://127.0.0.1:9"})
+    r = call(cmds, "local_models")
+    assert r["running"] is False and r["models"] == [] and r["suggested"]

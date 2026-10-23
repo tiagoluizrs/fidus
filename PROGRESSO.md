@@ -225,44 +225,67 @@ Está em `docs/LANCAMENTO.md`, seção 4.
 
 1. **Tratamento padrão neutro:** Alfred usa "senhor" fixo (mordomo). Para tratamento neutro quanto a gênero, melhor
    perguntar ao usuário como quer ser chamado na primeira execução? (Hoje: `character set alfred --tratamento-fixo ...`.)
+   R: Acho que precisa ter area para dizer se é homem, mulher, prefere não informar, isso deixa as respostas padrões mas podendo ser alteradas.
 2. **`perguntar_antes_de_guardar` padrão:** deixei **falso** (o PROJETO diz que o Fidus guarda o que aprende), mas toda
    escrita depois de ler conteúdo externo já exige confirmação. Prefere começar com verdadeiro?
+   R: Talvez fazer igual vc, ter a opção de ativar uma conversa temporária, quando ela é encecrrada alfred dormir mais de 1 horas podemos deletar. Mas quero fazer algo fluido, então toda conversa meio que deve fazer ele guardar contexto se eu citei meu filho 1 mes atrás ele deve saber quem é meu filho, mas se eu citar, quero bater um papo mais privado agora, e depois terminar com você pode sair do modo privado, ele sai, se após 1 hora quieto sem conversa não pedir volta sozinho.
 3. **Log de ações em SQLite?** O PROJETO sugere SQLite para histórico e log. Mantive JSONL (auditável, sem chave). A
    interface (etapa 5) lerá o JSONL. Trocar, ou manter?
+   R: Quero que seja seguindo a LGPD e que seja o mais performático para o OS. Inclusive falando de performance evite reescrever variavies para evitar problema de realocação em memória, use boas práticas ok?
 4. **Fala de início antes de gravar:** a fala curta ("Pois não, senhor.") toca **antes** de abrir a gravação, para o
    microfone não gravar a própria voz. Isso atrasa 1 a 2 s quem fala "ei Alfred, que horas são" de uma vez. Alternativa:
    chime curto (já existe, `som_ao_ouvir`) e falar só depois. Qual prefere? (`falar_inicio = false` desliga.)
+   R: Quero que seja da melhor forma para não dar bug e como outros agentes tem feito. Ideal tmb tentar reconhecer as 3 vozes do robo e ignorar, mas se isso consumir tempo e memória melhor sempre desligar mic quando robo estiver falando
 5. **Frases com "ei"/português no TTS e nomes próprios** (Jarbis, Alfred) dependem da voz SAPI instalada.
+  R: Vc quer permissão ou tá dizendo que é impossível?
 6. **Memória Markdown sem criptografia:** aceitável? Alternativa: cifrar também (perde edição à mão).
+  R: Qual o melhor padrão, mais rápido e que respeita LGPD? Coloque tudo em uma balança e decida.
 7. **Piper:** quer que eu deixe o download/instalação guiados em `docs/`? Hoje é só o adaptador.
+  R: Como assim download e o que é piper?
 8. **MCP:** a regra pede justificar e **perguntar antes** de adicionar dependência de terceiros. Usei clientes diretos
    (sem dependência nova). Um servidor MCP de Gmail/Slack exigiria o SDK `mcp` e processos Node de terceiros (mais
    memória em repouso e mais superfície de ataque). Quer mesmo assim algum MCP (ex.: Google Agenda), ou mantemos direto?
+  R: Acho que por enquanto não precisa né? Talvez no futuro criemos uma área que a pessoa faz seus MCPs, mas para agora tá de boa sem.
 9. **App do Google em "Em produção" sem verificação** (para o token não expirar em 7 dias): aceitável para uso pessoal?
+  R: Não quero que nada expire.
 10. **`gmail.compose`** também permite enviar (o Google não tem escopo só de rascunho). Aceita, ou prefere não ter
     rascunho na v1 e ficar só com `gmail.readonly`?
+    Cara acho que devemos deixar a pessoa escolher em cada add on se quer somente ler ou responder, isso para slack, gmail e qualquer outro email ou chat, para calendario poder ver agendas e criar eventos editar etc. Se nos emails e conversa for possível ler anexos, baixar e ler, avaliar por vc mesmo e citar para a pessoa, seria genial.
 11. **Slack:** token de **usuário** (lê DMs e canais privados dos quais você participa; respostas saem como você) ou de
     **bot** (precisa ser convidado nos canais; respostas saem como "Fidus")? Hoje: usuário.
+    R: Precisa parecer o usuário respondendo isso é crucial.
 12. **Fricção da regra de contaminação:** depois de ler e-mail/mensagem/evento, até "abre o bloco de notas" pede
     confirmação no mesmo comando. Aceitável? (Ler a própria memória não conta.)
+    R: Não entendi o que seria se contaminar nesse caso, é meu robô ficar puto comprando uma briga minha?
 13. **Chave do Windows Credential Manager:** limite de ~2,5 KB por credencial. O JSON do Google cabe, mas confirmar no PC.
+    R: O que isso significa? Precisa para algo?
 14. **Esc global enquanto o anel está aberto:** o anel não rouba o foco (para não atrapalhar quem está digitando), então
     uso um atalho global só enquanto ele existe. Aceitável? Alternativa: a janela toma o foco (Esc normal, mas interrompe
     a digitação).
+    R: E se fizessemos um flutuante? Tipo o teams faz quando saimos da tela da reunião? Ou o que o chrome faz com o meet?
 15. **Fechar o anel depois de 6 s parado** é configurável (`app.janela_inatividade_s` na 5B). Valor padrão ok?
+    R: Fechar o anel é tudo ou ele parar? Tipo como se ele se calasse? Prq seria legal 30s, prq tem gente que pensa mais lento.
 16. **Modelo local (Ollama):** está no escopo da v1 do PROJETO, mas nenhuma etapa pedida inclui o adaptador. Quer que eu
     faça (adaptador no formato OpenAI, restrito a ferramentas de leitura) depois da etapa 6?
+    R: Pensei nele ser um alternativo ao antropic, ferramenta de leitura vc diz que ele seria limitado? E sim eu quero o ollama, parece que vc botou o gpt free só foi isso?
 17. **Logo final:** os ícones atuais são provisórios (gerados por código). Quando tiver o SVG final, é só trocar
     `app/assets/` e rodar o empacotamento.
+    R: Nesse link https://claude.ai/artifact/UynS7T7WVeX8VStgdSNK77?sk=h7t2vMr4W5pphwtTYjMe2A tem um primeiro box da linha 1 e da linha 2 com Clara Logo e Escuro Logo. E se desse para a pessoa em uma área de configuração escolher o ícone um dos 3 que é mostrado na área Ícone do app: escuro, claro e colorido que tá nesse link?
 18. **Chave da API pela tela:** a tela "Modelo de IA" aceita colar a chave e a grava no cofre do Windows (nunca volta
     para a tela). O PROJETO só falava em `fidus secrets`. Manter as duas formas?
+    R: Tipo ele pede falando vc da ctrl+v e ele absorve? Se sim parece legal.
 19. **Controles desabilitados:** o que ainda não existe no núcleo (Local/Ollama, Outlook/Teams) aparece desabilitado
     com "em breve", em vez de escondido. Prefere esconder até existir?
+    R: Perfiro que vc coloque pelo menos Ollama. Os outros vc deixa em breve
 20. **Pasta de dados no Windows:** mudei o padrão para `%APPDATA%\Fidus` (o PROJETO falava em `~/.fidus`) e copio a antiga
     sem apagar. Concorda, ou prefere manter `~\.fidus` e só mudar o instalador?
+    R: Deixa po, acho de boa.
 21. **Assinatura de código:** o instalador sai sem assinatura (SmartScreen avisa). Vai comprar certificado? Se sim, qual
     (OV/EV) e onde guardar a senha (nunca no repositório).
+    R: Prq comprar cecrtificado, precisa?
 22. **Tamanho:** o núcleo congelado é grande (~550 MB em Linux, sem compressão). Aceitável, ou quer que eu corte
     dependências/modelos (por exemplo, trocar o Whisper embutido por baixar no primeiro uso, que já é o padrão)?
+    R: Qual o melhor caminho? Siga.
 23. **Tauri:** vale migrar do Electron para reduzir RAM/tamanho? Minha sugestão é só depois de medir no Windows (ver
     `docs/LANCAMENTO.md` seção 5).
+    R: Então vamos aguardar.

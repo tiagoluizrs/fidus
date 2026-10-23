@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useCore } from "../core";
 import { Badge, Button, Dialog, Page, Row, Section, Switch } from "../ui";
+
+interface LocalModels { running: boolean; models: string[]; suggested: string; url: string }
 
 export function ModeloIA() {
   const { eff, save, call, claudeModels, notify } = useCore();
@@ -10,6 +12,13 @@ export function ModeloIA() {
   useEffect(() => void call<{ stored: boolean; source: string }>("api_key", {}, { quiet: true }).then(setKey), [call]);
   const model = String(eff["modelo.claude"] ?? "claude-sonnet-5-5");
   const known = claudeModels.includes(model);
+  const local = eff["modelo.provedor"] === "local";
+  const localModel = String(eff["modelo.local"] ?? "qwen3:8b");
+  const ack = eff["modelo.local_acoes_ciente"] === true;
+  const [ollama, setOllama] = useState<LocalModels | null>(null);
+  const refresh = useCallback(async () => setOllama(await call<LocalModels>("local_models", {}, { quiet: true })), [call]);
+  useEffect(() => { if (local) void refresh(); }, [local, refresh]);
+  const installed = ollama?.models ?? [];
 
   const submit = async () => {
     const r = await call<{ stored: boolean; source: string }>("api_key", { op: "set", value });
@@ -25,28 +34,71 @@ export function ModeloIA() {
     <Page title="Modelo de IA" subtitle="Escolha quem pensa por trás do personagem e veja para onde cada dado vai.">
       <Section title="Provedor" subtitle="Troque quando quiser; a memória e o personagem continuam os mesmos.">
         <div className="engines" role="radiogroup" aria-label="Provedor">
-          <button type="button" role="radio" aria-checked className="engine on"><strong>Claude</strong><span className="muted small">Anthropic · Padrão. Melhor para pedidos com várias etapas e ferramentas.</span><Badge>Nuvem</Badge></button>
-          <button type="button" role="radio" aria-checked={false} className="engine" disabled><strong>Local</strong><span className="muted small">Ollama · Nada sai da máquina. Mais limitado; indicado para comandos simples.</span><Badge tone="soon">Em breve</Badge></button>
+          <button type="button" role="radio" aria-checked={!local} className={`engine${local ? "" : " on"}`} onClick={() => void save({ "modelo.provedor": "claude" })}>
+            <strong>Claude</strong><span className="muted small">Anthropic · Padrão. Melhor para pedidos com várias etapas e ferramentas.</span><Badge>Nuvem</Badge>
+          </button>
+          <button type="button" role="radio" aria-checked={local} className={`engine${local ? " on" : ""}`} onClick={() => void save({ "modelo.provedor": "local" })}>
+            <strong>Local</strong><span className="muted small">Ollama · Nada sai da máquina. Mais limitado: por padrão só lê e responde.</span><Badge tone="ok">Neste computador</Badge>
+          </button>
         </div>
-        <Row label="Modelo" htmlFor="model" hint="Teste o claude-haiku-5-5 nos pedidos simples: costuma ser mais rápido e barato.">
-          <select id="model" value={model} onChange={(e) => save({ "modelo.claude": e.target.value })}>
-            {!known && <option value={model}>{model}</option>}
-            {claudeModels.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </Row>
-        <Row label="Chave da API" hint={key?.source === "ambiente" ? "Vem do arquivo .env (só desenvolvimento). Guarde no cofre." : undefined}>
-          <span className="inline">
-            <Badge tone={key?.stored ? "ok" : "neutral"}>{key?.stored ? "Guardada no cofre do sistema" : key?.source === "ambiente" ? "No ambiente (.env)" : "Não definida"}</Badge>
-            <Button onClick={() => setEditing(true)}>{key?.stored ? "Alterar" : "Definir"}</Button>
-          </span>
-        </Row>
+        {!local && (
+          <>
+            <Row label="Modelo" htmlFor="model" hint="Teste o claude-haiku-5-5 nos pedidos simples: costuma ser mais rápido e barato.">
+              <select id="model" value={model} onChange={(e) => save({ "modelo.claude": e.target.value })}>
+                {!known && <option value={model}>{model}</option>}
+                {claudeModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </Row>
+            <Row label="Chave da API" hint={key?.source === "ambiente" ? "Vem do arquivo .env (só desenvolvimento). Guarde no cofre." : undefined}>
+              <span className="inline">
+                <Badge tone={key?.stored ? "ok" : "neutral"}>{key?.stored ? "Guardada no cofre do sistema" : key?.source === "ambiente" ? "No ambiente (.env)" : "Não definida"}</Badge>
+                <Button onClick={() => setEditing(true)}>{key?.stored ? "Alterar" : "Definir"}</Button>
+              </span>
+            </Row>
+          </>
+        )}
+        {local && (
+          <Row label="Modelo local" htmlFor="local-model"
+            hint={ollama?.running === false ? `O Ollama não está aberto. Abra o app dele e, se preciso, baixe um modelo no terminal: ollama pull ${ollama.suggested}` : "Escolha um modelo que suporte ferramentas (por exemplo qwen3:8b ou llama3.1:8b)."}>
+            <span className="inline">
+              <Badge tone={ollama?.running ? "ok" : "neutral"}>{ollama == null ? "Verificando…" : ollama.running ? "Ollama aberto" : "Ollama fechado"}</Badge>
+              <select id="local-model" value={localModel} onChange={(e) => save({ "modelo.local": e.target.value })}>
+                {!installed.includes(localModel) && <option value={localModel}>{localModel}{ollama?.running ? " (não baixado)" : ""}</option>}
+                {installed.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <Button onClick={() => void refresh()}>Atualizar</Button>
+            </span>
+          </Row>
+        )}
       </Section>
+
+      {local && (
+        <Section title="Ações com o modelo local" subtitle="Por padrão o modelo local só lê (agenda, e-mails, arquivos, memória). Criar, editar, apagar e enviar ficam bloqueados.">
+          <div className="risk" role="note">
+            <strong>Riscos de liberar ações</strong>
+            <ul>
+              <li>Modelos locais pequenos erram mais ao escolher e preencher ferramentas: podem propor apagar ou enviar a coisa errada.</li>
+              <li>São mais fáceis de enganar por instruções escondidas em e-mails, mensagens e arquivos.</li>
+              <li>O Fidus continua pedindo a sua confirmação antes de qualquer ação, mas você precisa conferir o que está confirmando.</li>
+            </ul>
+          </div>
+          <Row label="Entendo os riscos acima">
+            <label className="check">
+              <input type="checkbox" checked={ack} onChange={(e) => save({ "modelo.local_acoes_ciente": e.target.checked })} />
+              <span>Li e estou de acordo</span>
+            </label>
+          </Row>
+          <Row label="Permitir ações com o modelo local" hint={ack ? "Desligue a qualquer momento." : "Marque que entende os riscos para poder ligar."}>
+            <Switch label="Permitir ações com o modelo local" checked={eff["modelo.local_acoes"] === true && ack} disabled={!ack} onChange={(v) => save({ "modelo.local_acoes": v })} />
+          </Row>
+        </Section>
+      )}
 
       <Section title="Para onde vão seus dados" subtitle="Só o necessário para responder sai do computador.">
         <Row label="Sua voz e a transcrição"><Badge tone="ok">Neste computador</Badge></Row>
         <Row label="Memória e histórico"><Badge tone="ok">Neste computador</Badge></Row>
         <Row label="Chaves e tokens das contas"><Badge tone="ok">Cofre do sistema</Badge></Row>
-        <Row label="Seu pedido e trechos necessários"><Badge>Claude · Nuvem</Badge></Row>
+        <Row label="Seu pedido e trechos necessários">{local ? <Badge tone="ok">Ollama · Neste computador</Badge> : <Badge>Claude · Nuvem</Badge>}</Row>
       </Section>
 
       <Section title="Segurança das ações" subtitle="Valem para todos os personagens.">

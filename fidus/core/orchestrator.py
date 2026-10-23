@@ -9,7 +9,7 @@ from .actionlog import ActionLog
 from .config import Config
 from .permissions import Confirmer, ask, needs_confirmation
 from .providers.base import Message, Provider, Response, ToolCall, ToolResult, ToolSpec
-from .tools.base import Tool, ToolError
+from .tools.base import Risk, Tool, ToolError
 from .tools.registry import load_tools
 from .untrusted import TAG, wrap
 
@@ -121,6 +121,15 @@ class Orchestrator:
         except ToolError as e:
             self._log(call, tool, "bloqueado", str(e))
             return ToolResult(call.id, str(e), True)
+
+        if getattr(self.provider, "local", False) and tool.risk_for(call.arguments) is not Risk.LEITURA and not self.config.local_actions_allowed:
+            # modelo local erra mais ao usar ferramentas: por padrão só lê. Liberar exige o toggle e a ciência dos riscos.
+            self._log(call, tool, "bloqueado_modelo_local")
+            return ToolResult(
+                call.id,
+                "O modelo local está limitado a leitura. O usuário pode liberar ações em Configurações > Modelo de IA.",
+                True,
+            )
 
         if needs_confirmation(tool, call.arguments, self.config, self._tainted):
             if not ask(tool, call.arguments, self.confirm):
