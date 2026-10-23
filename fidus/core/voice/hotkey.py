@@ -56,9 +56,31 @@ class PushToTalk:
             self.on_stop()
 
 
+class ToggleHotkey:
+    """Atalho de alternância (ex.: silenciar): dispara uma vez por vez que a combinação é apertada."""
+
+    def __init__(self, combo: frozenset[str], on_toggle: Callable[[], None]):
+        self.combo, self.on_toggle = combo, on_toggle
+        self.down: set[str] = set()
+        self._armed = False
+
+    def press(self, name: str) -> None:
+        self.down.add(name)
+        if not self._armed and self.combo <= self.down:
+            self._armed = True
+            self.on_toggle()
+
+    def release(self, name: str) -> None:
+        self.down.discard(name)
+        if name in self.combo:
+            self._armed = False
+
+
 class GlobalKeyListener:
-    def __init__(self, ptt: PushToTalk):
-        self.ptt = ptt
+    """Um ouvinte global de teclado que repassa as teclas a vários atalhos (PushToTalk, ToggleHotkey...)."""
+
+    def __init__(self, *handlers):
+        self.handlers = handlers
         self._listener = None
 
     def start(self) -> None:
@@ -66,11 +88,13 @@ class GlobalKeyListener:
 
         def on_press(key):
             if (n := key_name(key)):
-                self.ptt.press(n)
+                for h in self.handlers:
+                    h.press(n)
 
         def on_release(key):
             if (n := key_name(key)):
-                self.ptt.release(n)
+                for h in self.handlers:
+                    h.release(n)
 
         self._listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         self._listener.start()

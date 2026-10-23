@@ -38,6 +38,7 @@ class Orchestrator:
         self.tools = tools if tools is not None else load_tools()
         self.log = log or ActionLog(config.log_path)
         self.history: list[Message] = []
+        self.personagem_ativo = "alfred"
 
     def _specs(self) -> list[ToolSpec]:
         return [ToolSpec(t.name, t.description, t.parameters) for t in self.tools.values()]
@@ -53,11 +54,16 @@ class Orchestrator:
             on_text(response.text)
         return response
 
-    def run(self, user_text: str, on_text: Callable[[str], None] | None = None) -> str:
+    def run(
+        self, user_text: str, on_text: Callable[[str], None] | None = None, personagem_ativo: str = "alfred"
+    ) -> str:
         """Atende um comando. O limite de chamadas vale por comando, não por sessão.
 
         Com `on_text`, o texto do modelo é entregue em trechos, conforme chega (streaming).
+        `personagem_ativo` é quem foi chamado; a personalidade dele só entra na etapa 3.
         """
+        self.personagem_ativo = personagem_ativo
+        self.log.event("personagem", personagem=personagem_ativo)
         self.history.append(Message("user", text=user_text))
         calls_made = 0
         while True:

@@ -3,6 +3,10 @@
   uv run fidus                    conversa por texto
   uv run fidus "pedido"           comando único por texto
   uv run fidus voice              laço de voz (segure o atalho para falar)
+  uv run fidus listen             laço com palavra de ativação ("ei Alfred") e push-to-talk
+  uv run fidus wake-test          mostra a pontuação de cada palavra em tempo real (ajuste de limiares)
+  uv run fidus wake-bench [seg]   mede CPU e memória da escuta passiva (padrão 60 s)
+  (opções de listen/wake-test/wake-bench: --somente-teste usa o modelo pronto "hey jarvis")
   uv run fidus say "texto"        testa a voz
   uv run fidus mics               lista os microfones
   uv run fidus --check-key        testa a chave da Anthropic
@@ -13,7 +17,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-COMMANDS = {"voice", "say", "mics"}
+COMMANDS = {"voice", "say", "mics", "listen", "wake-test", "wake-bench"}
 
 
 def _cmd_mics() -> int:
@@ -54,6 +58,30 @@ def _cmd_voice() -> int:
 
     build_voice_loop(load_config()).run()
     return 0
+
+
+def _cmd_listen(include_test: bool) -> int:
+    from .core.config import load_config
+    from .core.voice.listen_build import build_listen_loop
+
+    build_listen_loop(load_config(), include_test).run()
+    return 0
+
+
+def _cmd_wake_test(include_test: bool, synthetic: bool) -> int:
+    from .core.config import load_config
+    from .core.voice.bench import SyntheticStream
+    from .core.voice.listen_build import run_wake_test
+
+    return run_wake_test(load_config(), include_test, stream_factory=SyntheticStream if synthetic else None)
+
+
+def _cmd_wake_bench(rest: list[str], include_test: bool, synthetic: bool) -> int:
+    from .core.config import load_config
+    from .core.voice.bench import run_bench
+
+    nums = [a for a in rest if not a.startswith("--")]
+    return run_bench(load_config(), float(nums[0]) if nums else 60.0, include_test, synthetic)
 
 
 def _text_mode(args) -> int:
@@ -116,6 +144,13 @@ def main(argv: list[str] | None = None) -> int:
                 print('Uso: fidus say "texto"', file=sys.stderr)
                 return 2
             return _cmd_say(" ".join(rest))
+        include_test, synthetic = "--somente-teste" in rest, "--sem-microfone" in rest
+        if cmd == "listen":
+            return _cmd_listen(include_test)
+        if cmd == "wake-test":
+            return _cmd_wake_test(include_test, synthetic)
+        if cmd == "wake-bench":
+            return _cmd_wake_bench(rest, include_test, synthetic)
         return _cmd_voice()
 
     parser = argparse.ArgumentParser(prog="fidus", description="Assistente Fidus", epilog=__doc__)

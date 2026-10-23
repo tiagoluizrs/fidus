@@ -2,7 +2,7 @@
 
 Assistente de voz para desktop (Windows), "seu conselheiro de IA". Visão, arquitetura e roteiro em [`PROJETO.md`](PROJETO.md).
 
-**Estado atual: Etapa 2 (voz com push-to-talk) sobre o núcleo da Etapa 1.** Sem interface, sem Electron e sem detector "ei <nome>" (isso é a etapa 2B).
+**Estado atual: Etapa 2B (palavra de ativação) sobre a voz push-to-talk (Etapa 2) e o núcleo (Etapa 1).** Sem interface e sem Electron ainda. Personalidade dos personagens vem na etapa 3.
 
 ## Instalação (Windows 10/11, PowerShell)
 
@@ -73,8 +73,11 @@ fidus/core/
   config.py, secrets.py
   metrics.py        latências e memória (Etapa 2)
   providers/        interface única (base.py) + adaptador da Anthropic (com streaming)
-  voice/            audio, hotkey (push-to-talk), stt (Whisper), tts (SAPI), sentences, confirm, loop
+  voice/            audio, hotkey, stt (Whisper), tts (SAPI), sentences, confirm, loop (push-to-talk)
+                    audio_manager, wakeword, vad, characters, indicator, listen_loop, bench (palavra de ativação)
   tools/            um arquivo por ferramenta: abrir_app, buscar_arquivos, ler_agenda_google
+docs/WAKEWORDS.md   guia para treinar e instalar os modelos de palavra de ativação
+models/wakewords/   seus modelos .onnx (fora do Git)
 docs/design/        telas do canvas de design (referência para a etapa 5; não usadas ainda)
 ```
 
@@ -95,13 +98,14 @@ Imports pesados (`anthropic`, Google, `keyring`, `faster-whisper`, `sounddevice`
 
 ## O que foi validado e o que falta validar no Windows
 
-Desenvolvido e testado em Linux (85 testes passando; o teste da chave da API pula sem `ANTHROPIC_API_KEY`). **Precisa ser validado no Windows:**
+Desenvolvido e testado em Linux (133 testes passando; o teste da chave da API pula sem `ANTHROPIC_API_KEY`). **Precisa ser validado no Windows:**
 
 - [ ] `abrir_app`: o lançamento real (`os.startfile`) é mockado nos testes. Conferir `abre o bloco de notas` e `abre a calculadora`.
 - [ ] `keyring` no Gerenciador de Credenciais do Windows (os testes usam um módulo falso).
 - [ ] `ler_agenda_google` com OAuth real (os testes usam a API mockada), incluindo o fluxo de autorização no navegador.
 - [ ] `uv sync` com Python 3.12 no Windows (o `uv.lock` foi gerado no Linux; as dependências de voz foram checadas para Windows com `uv pip compile --python-platform windows`).
 - [ ] `uv run fidus --check-key` com a sua chave.
+- [ ] **Palavra de ativação (Etapa 2B):** microfone real no `AudioManager`, `listen`, treino e instalação dos 3 modelos, alarmes falsos e medições no Windows (ver o checklist da seção).
 - [ ] **Voz (Etapa 2):** microfone real (`sounddevice`), atalho global (`pynput`), SAPI (`pywin32`), download e uso do Whisper, streaming real da API e as medições. Tudo isso usa mocks nos testes; ver o checklist da seção Voz.
 
 ## Voz (Etapa 2)
@@ -171,6 +175,104 @@ Marque conforme for testando:
 - [ ] Nenhum `.wav` em `~\.fidus` (a menos que `salvar_audio_debug = true`).
 - [ ] Com o Gerenciador de Tarefas aberto, conferir a memória do Python com o modelo carregado e em repouso.
 
+## Palavra de ativação (Etapa 2B)
+
+```powershell
+uv run fidus listen                    # laço completo: "ei Alfred" ou o atalho
+uv run fidus wake-test                 # pontuação de cada palavra em tempo real (ajustar limiares)
+uv run fidus wake-bench                # mede CPU e memória da escuta passiva por 60 s
+# para validar o encanamento ANTES dos seus modelos, com o modelo pronto "hey jarvis" (SOMENTE TESTE):
+uv run fidus listen --somente-teste
+uv run fidus wake-test --somente-teste
+```
+
+**Os modelos próprios ("ei alfred", "ei donna", "ei jarbis") precisam ser treinados por você.** Passo a passo em
+[`docs/WAKEWORDS.md`](docs/WAKEWORDS.md); os arquivos vão em `models/wakewords/`. Sem eles, o `listen` avisa, só
+desativa aquela palavra e o push-to-talk continua funcionando.
+
+> **"Somente teste":** `hey_jarvis` é um modelo pronto do openWakeWord (licença CC BY-NC-SA 4.0, uso não comercial),
+> usado só para validar o encanamento. Fica desativado na configuração e só liga com `--somente-teste`.
+
+**Fluxo do `listen`:** escuta passiva -> "ei <nome>" (ou atalho) -> *sinal opcional* -> grava até **1,2 s de silêncio**
+(máx. 15 s, VAD Silero local) -> Whisper -> orquestrador -> voz -> **aguarda 5 s por uma continuação** (sem chamar
+de novo) -> volta a dormir. O personagem chamado (`alfred`, `donna`, `jarbis`; atalho = `alfred`) é passado ao
+orquestrador como `personagem_ativo` e registrado no log; sem personalidade ainda.
+
+**Um fluxo de microfone só** (`AudioManager`): o detector e as gravações (chamado, atalho e resposta "sim/não" da
+confirmação por voz) compartilham o mesmo fluxo, com buffer circular de ~2 s (pré-roll) **só em memória**. Enquanto
+o Fidus responde, a detecção fica pausada (não escuta a própria voz). Falar por cima, com o atalho, interrompe a voz.
+
+**Indicador de microfone no terminal** (sempre visível, muda a cada transição):
+
+| Estado | Texto |
+| --- | --- |
+| Escuta passiva | `[MICROFONE: ESCUTA PASSIVA] só aguardando o chamado; nada é gravado nem enviado` |
+| Gravando | `[MICROFONE: GRAVANDO] o áudio vai ser transcrito neste computador` |
+| Respondendo | `[MICROFONE: ABERTO, ESCUTA PAUSADA] respondendo` |
+| Silenciado | `[MICROFONE: SILENCIADO] fechado; ninguém está ouvindo` |
+
+`Ctrl+Alt+M` (configurável: `atalho_silenciar`) **fecha o microfone de verdade** e abre de novo.
+
+**Privacidade:** na escuta passiva nada é gravado em disco nem enviado à rede (há testes para isso, inclusive um que
+bloqueia `open()` de escrita e `socket.connect`). A única rede do detector é o **download dos arquivos de modelo**
+(não de áudio), do GitHub do openWakeWord, na primeira vez. O `salvar_audio_debug` da Etapa 2 só atua depois do
+chamado, e vem desligado.
+
+### Configuração (`fidus.toml`, seção `[chamados]`)
+
+Veja `fidus.example.toml`. Resumo: `intervalo_s` (2,0), `silencio_fim_s` (1,2), `max_gravacao_s` (15),
+`esperar_fala_s` (5), `continuacao_s` (5), `som_ao_ouvir` (false), `atalho_silenciar`, e uma tabela por palavra
+(`modelo`, `personagem`, `limiar`, `ativa`, `somente_teste`). Limiar é **por palavra**.
+
+### Medições da escuta passiva
+
+`uv run fidus wake-bench` (60 s, em silêncio) imprime e grava no `actions.log` (evento `bench_escuta_passiva`): CPU
+(% de um núcleo e da máquina), memória antes e depois de carregar os modelos, média e máximo, tempo de inferência por
+frame (cada frame = 80 ms), frames descartados e o tempo **detecção -> gravação aberta**. O `listen` também grava, a cada
+chamado, o evento `chamado` com `deteccao_ate_gravacao_s`.
+
+Medido no ambiente de desenvolvimento (Linux, CPU de servidor, modelo real `hey_jarvis` em ONNX, **áudio sintético**,
+sem microfone; `wake-bench --somente-teste --sem-microfone`):
+
+| Medida (60 s, 1 modelo, só escuta passiva) | Resultado |
+| --- | --- |
+| CPU do processo | **7,6 % de um núcleo** (1,9 % da máquina) |
+| Memória do processo | 29,7 MB antes -> **105 MB** com o runtime e o modelo; média 110,8 MB, máximo 111,3 MB |
+| Inferência por frame de 80 ms | média **6,3 ms** (7,9 % do orçamento), máxima 28 ms |
+| Frames descartados | 0 de 751 |
+| Detecção -> gravação aberta (código do Fidus) | mediana **0,04 ms**, p99 0,32 ms, máx. 0,57 ms (300 repetições) |
+
+A memória cai de ~189 MB para ~105 MB porque o Fidus **não importa** o módulo de verificadores do openWakeWord
+(`fidus/core/voice/oww.py`), que arrasta scikit-learn e scipy. O VAD Silero soma ~7 MB; o Whisper `small` entra à
+parte (o `listen` o carrega ao iniciar). Somando tudo, a memória em repouso do `listen` será medida no seu PC.
+
+**Não medido (precisa do seu PC):** os mesmos números no Windows com microfone real; e o tempo "ei <nome>" -> início
+da gravação com voz de verdade, porque ele inclui o atraso do próprio modelo depois que você termina a palavra
+(o `deteccao_ate_gravacao_s` mede só o trecho do Fidus, da detecção à gravação aberta).
+
+### Checklist manual (Windows)
+
+- [ ] `uv sync` e `uv run pytest` passam.
+- [ ] `uv run fidus wake-test --somente-teste`: dizer "hey Jarvis" faz a pontuação subir e aparece `>>> ATIVOU`.
+- [ ] `uv run fidus listen --somente-teste`: "hey Jarvis" -> começa a gravar (indicador `GRAVANDO`) -> fale um pedido
+      e fique 1,2 s em silêncio -> transcreve, responde falando, e aparece "aguardando continuação por 5 s".
+- [ ] Continuação: dentro dos 5 s, falar de novo **sem** chamar o nome: ele atende. Ficar quieto: volta a dormir.
+- [ ] Chamar e não falar nada: "(sem fala; voltando a dormir)".
+- [ ] `som_ao_ouvir = true` toca um bipe ao começar a ouvir; `false` (padrão) fica mudo.
+- [ ] O indicador mostra ESCUTA PASSIVA, GRAVANDO, ABERTO/PAUSADA e SILENCIADO nos momentos certos.
+- [ ] `Ctrl+Alt+M` silencia (o ícone de microfone do Windows some, atalho e chamado param de funcionar) e reativa.
+- [ ] Atalho `Ctrl+Alt+Espaço` continua funcionando no `listen`, inclusive interrompendo a voz.
+- [ ] "Abre o regedit" no `listen`: a pergunta de confirmação é falada e o "sim/não" é ouvido pelo mesmo microfone.
+- [ ] Remover/renomear um `.onnx`: só aquela palavra é desativada, com aviso no terminal e evento
+      `wakeword_desativada` no `actions.log`; o push-to-talk segue funcionando.
+- [ ] O log registra `chamado` com `personagem` e `deteccao_ate_gravacao_s`.
+- [ ] Nenhum `.wav` em `~\.fidus` e nenhum arquivo novo na pasta do projeto depois de uma sessão de escuta.
+- [ ] `uv run fidus wake-bench`: anote CPU, memória e inferência por frame (compare com a tabela acima).
+- [ ] **Teste de alarmes falsos, 15 minutos:** `uv run fidus listen` com TV ou conversa ao fundo, sem falar o nome.
+      Conte os eventos `chamado` no `actions.log`: `Select-String '"type": "chamado"' $HOME\.fidus\actions.log`.
+      Alvo: 0 (no máximo 1). Se passar, suba o `limiar` da palavra (veja `docs/WAKEWORDS.md`, seção 4) e repita.
+- [ ] Repetir o teste de 15 min dizendo um nome parecido ou o nome da pessoa na TV; anotar os falsos.
+
 ## Fora do escopo desta etapa
 
-Detector "ei Alfred" (etapa 2B), personagens e memória (etapa 3), Gmail/Slack, interface, Piper e provedor Ollama. Ver o roteiro no `PROJETO.md`.
+Personalidade dos personagens e memória (etapa 3), Gmail/Slack, interface, Piper e provedor Ollama. Ver o roteiro no `PROJETO.md`.

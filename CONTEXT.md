@@ -166,3 +166,71 @@ Atalho completo pressionado -> `tts.stop()` (falar por cima interrompe) e começ
 ## Próximo passo (não iniciado)
 
 Etapa 2B: detector "ei <nome>" com openWakeWord. Antes, validar no Windows o checklist da voz e anotar as latências.
+
+
+---
+
+# Etapa 2B: palavra de ativação
+
+Na mesma branch `claude/etapa-2-voz` (a pedido do usuário), em commit novo depois do da Etapa 2. **Não foram feitos:** interface, Electron, personalidade dos personagens (etapa 3).
+
+## Antes de começar
+
+- `uv run pytest`: 85 passaram, 1 pulado. A Etapa 2 não tinha log de latência real (sem microfone e sem download do Whisper no ambiente de desenvolvimento).
+- **openWakeWord** (docs e PyPI consultados): `openwakeword==0.6.0` resolve para Windows + Python 3.12 com `onnxruntime` (sem `tflite`). Modelos prontos: alexa, hey_mycroft, hey_jarvis, hey_rhasspy, timer, weather. **Código Apache 2.0; modelos prontos CC BY-NC-SA 4.0** (uso não comercial). Treino: notebook do Colab (projeto diz < 1 h; relatos da comunidade dizem que o notebook oficial quebrou com versões novas e há notebooks alternativos). Não encontrei documentação sobre frases compostas em português.
+- Sem alternativa melhor: Porcupine exige chave e licença comercial para modelos próprios.
+- O usuário aceitou o plano e o plano B "hey ..." se "ei ..." treinar mal.
+
+## Decisões técnicas
+
+| Tema | Decisão | Motivo |
+| --- | --- | --- |
+| Dependência | `openwakeword>=0.6` + `override-dependencies = ["tflite-runtime; python_version < '3.0'"]`; `requires-python = ">=3.12,<3.13"` | No Linux o openwakeword exige `tflite-runtime`, sem pacote para 3.12; o Fidus usa só ONNX. O override descarta a exigência. Fixar 3.12 evita falha de resolução em 3.13+. |
+| Memória | `fidus/core/voice/oww.py` troca o módulo `openwakeword.custom_verifier_model` por um substituto vazio antes do import | Esse módulo importa scikit-learn e scipy (~100 MB) só para treinar verificadores. Memória do detector: ~189 MB -> ~105 MB. |
+| Fluxo de áudio | `AudioManager`: um `sounddevice.InputStream` (int16, 16 kHz, blocos de 1280 = 80 ms), buffer circular de 25 blocos (2 s), assinantes (detector) e `Capture` (fila própria, com pré-roll opcional) | Pedido: um fluxo compartilhado entre detector e gravações. Em memória apenas. |
+| Detector em thread | `DetectorRunner` com fila de 50 blocos; o callback do áudio só enfileira (descarta e conta se encher) | A inferência (~6 ms) não pode travar o fluxo do microfone. |
+| Regra de ativação | `ActivationGate`: limiar por palavra; vence a maior pontuação; intervalo mínimo global (2 s) e ativação suprimida não reinicia o intervalo; após ativar, `reset()` do modelo | Pedido. |
+| Pausas | `pause_detection()` enquanto grava/responde (não ouve a própria voz); `mute()` **fecha o fluxo**, descarta o buffer e as gravações | Pedido: escuta pausável ou silenciável; silenciar é de verdade. |
+| Pré-roll | Anel de 2 s; gravação do chamado usa 0 s (para não incluir "ei alfred" no texto), atalho e continuação usam 0,5 s. Configurável | Evita transcrever o próprio chamado sem perder o início do atalho. |
+| Fim da gravação | `SilenceEndpointer` (1,2 s de silêncio, máx. 15 s, espera 5 s pelo início da fala) com VAD Silero do openWakeWord; plano B por volume | Mais robusto a TV de fundo que só energia. |
+| Continuação | Depois da resposta, abre captura por `continuacao_s` (5 s); se houver fala, atende sem novo chamado; senão dorme. Só para chamado por palavra, não para o atalho | Pedido. |
+| Confirmação por voz no `listen` | Usa o MESMO fluxo via captura temporária (não abre outro `InputStream`) | Pedido: um fluxo só. |
+| Atalho de silenciar | `Ctrl+Alt+M` (`ToggleHotkey`), no mesmo ouvinte global do push-to-talk (`GlobalKeyListener(*handlers)`) | Não há outra entrada de controle no terminal enquanto o laço roda. |
+| Palavra ausente/quebrada | `load_detector` desativa só aquela palavra, avisa no terminal e grava `wakeword_desativada` no log; se um modelo quebra, descobre qual testando um a um | Pedido. |
+| Modelo de teste | `hey_jarvis` rotulado `somente_teste`, desativado por padrão, ligado com `--somente-teste`, mapeado para `jarbis` | Pedido. |
+| Personagem | `characters.py` (alfred, donna, jarbis; padrão alfred); `Orchestrator.run(..., personagem_ativo)` guarda e grava o evento `personagem`; `chamado` e `metricas_pedido` também levam o personagem | Pedido; personalidade fica para a etapa 3. |
+| Métrica "ei <nome> -> gravação" | `deteccao_ate_gravacao_s` no evento `chamado`: da ativação do detector até a captura aberta | Só mede o trecho do Fidus; o atraso do modelo após o fim da palavra depende de voz real. |
+| Tempo até a voz | `speech_end` do atalho/chamado: no chamado é `agora - 1,2 s` (fim real da fala, já descontado o silêncio de encerramento) | Para que a latência (c) reflita o que o usuário percebe. |
+
+## Arquivos criados ou alterados
+
+- Novos em `fidus/core/voice/`: `audio_manager.py`, `wakeword.py`, `oww.py`, `vad.py`, `characters.py`, `indicator.py`, `listen_loop.py`, `listen_build.py` (montagem real, `wake-test`), `bench.py` (`wake-bench`, microfone sintético).
+- Alterados: `config.py` (`WakeWord`, `WakeConfig`, `[chamados]`), `hotkey.py` (`ToggleHotkey`, `GlobalKeyListener` com vários atalhos), `loop.py` (`handle_audio(..., personagem)`), `orchestrator.py` (`personagem_ativo`), `__main__.py` (`listen`, `wake-test`, `wake-bench`, `--somente-teste`, `--sem-microfone`), `pyproject.toml`/`uv.lock`, `.gitignore` (modelos `.onnx`), `fidus.example.toml`, `README.md`.
+- Novos: `docs/WAKEWORDS.md` (guia de treino e instalação em português), `models/wakewords/` (`.gitkeep` e README).
+- Testes novos (133 no total, 1 pulado): `test_wakeword.py` (limiar, intervalo, personagens, config, carga de modelos, runner e um teste com o modelo real `hey_jarvis`), `test_audio_manager.py`, `test_vad_endpointer.py`, `test_listen_loop.py` (máquina de estados com fakes), `test_wake_privacy.py` (nada em disco nem rede no modo passivo, incluindo bloqueio de `open()` de escrita e `socket.connect`). Dois testes da Etapa 1 foram ajustados para filtrar eventos que não são ações no log.
+
+## Verificações e números medidos
+
+- `uv run pytest`: **133 passed, 1 skipped**.
+- Detector real (openWakeWord ONNX, `hey_jarvis`) rodando 60 s com áudio sintético (ruído baixo) em Linux, sem microfone: CPU **7,6 % de um núcleo**; memória 29,7 -> 105 MB (média 110,8, máx. 111,3); inferência média **6,3 ms** por frame de 80 ms (máx. 28 ms); 0 frames descartados; 0 ativações.
+- Detecção -> gravação aberta (código do Fidus, 300 repetições): mediana 0,04 ms, p99 0,32 ms.
+- `wake-test` verificado de ponta a ponta com o modelo real (pontuação em tempo real, resumo ao `Ctrl+C`).
+
+## O que NÃO foi validado (precisa do PC do usuário)
+
+- Microfone real, atalho global e SAPI no Windows (como na Etapa 2).
+- **Os três modelos próprios não existem**: dependem do treino do usuário (`docs/WAKEWORDS.md`). Sem eles o `listen` só tem push-to-talk. O modelo de teste valida o encanamento, mas não foi testado com a voz de uma pessoa (não há microfone nem sintetizador aqui): a detecção real de "hey jarvis" por voz fica para o PC do usuário.
+- CPU e memória em repouso no Windows com microfone real, e o tempo real "ei <nome> -> início da gravação" com voz de verdade.
+- Alarmes falsos com TV/conversa por 15 minutos (checklist no README).
+- Qualidade do treino com "ei" em português (plano B "hey" documentado).
+- O notebook de treino pode ter mudado; o guia aponta o repositório oficial e uma alternativa da comunidade sem ter sido executado por mim.
+
+## Limitações conhecidas
+
+- No `listen` o Whisper (~1 GB estimado) e o VAD ficam carregados; a memória em repouso total só será conhecida no Windows.
+- O indicador é texto no terminal; o indicador visual do microfone na interface vem na etapa 5.
+- A frase do chamado ("ei Alfred") não é removida da transcrição por pré-roll 0, mas se o usuário continuar a falar logo ao fim do nome, os primeiros milissegundos entre o fim do nome e a detecção podem ser perdidos (ajustável em `preroll_chamado_s`).
+
+## Próximo passo (não iniciado)
+
+Etapa 3: personagens e memória. Antes: treinar os modelos (`docs/WAKEWORDS.md`), validar o checklist da 2 e da 2B no Windows e anotar as medições.

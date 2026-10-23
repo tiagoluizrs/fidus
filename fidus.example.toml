@@ -22,3 +22,49 @@ idioma = "pt-BR"
 velocidade_voz = 0          # -10 a 10
 tempo_confirmacao_s = 8
 salvar_audio_debug = false  # o áudio fica só na memória; true grava .wav para depuração
+
+[chamados]
+# Palavra de ativação. Os modelos ficam em models/wakewords/ (veja docs/WAKEWORDS.md).
+intervalo_s = 2.0           # mínimo entre duas ativações
+silencio_fim_s = 1.2        # silêncio que encerra a gravação
+max_gravacao_s = 15
+esperar_fala_s = 5.0        # depois do chamado, quanto esperar você começar a falar
+continuacao_s = 5.0         # depois da resposta, quanto esperar uma continuação sem chamar de novo
+som_ao_ouvir = false        # bipe ao começar a ouvir
+atalho_silenciar = "ctrl+alt+m"   # fecha/abre o microfone
+personagem_padrao = "alfred"
+# limiar_vad = 0.5          # sensibilidade do fim por silêncio (Silero)
+
+[chamados.palavras.ei_alfred]
+modelo = "ei_alfred.onnx"
+personagem = "alfred"
+limiar = 0.5                # sobe se houver alarme falso; desce se ele não ouvir você
+ativa = true
+
+[chamados.palavras.ei_donna]
+modelo = "ei_donna.onnx"
+personagem = "donna"
+limiar = 0.5
+ativa = true
+
+[chamados.palavras.ei_jarbis]
+modelo = "ei_jarbis.onnx"
+personagem = "jarbis"
+limiar = 0.5
+ativa = true
+
+# SOMENTE TESTE: modelo pronto do openWakeWord ("hey jarvis"), só para validar o encanamento
+# antes dos seus modelos. Licença CC BY-NC-SA 4.0 (uso não comercial). Use: `uv run fidus listen --somente-teste`
+[chamados.palavras.hey_jarvis_teste]
+modelo = "hey_jarvis"
+personagem = "jarbis"
+limiar = 0.5
+somente_teste = true
+ativa = false
+
+# Plano B se "ei ..." treinar mal: treine "hey ..." e troque (veja docs/WAKEWORDS.md)
+# [chamados.palavras.hey_alfred]
+# modelo = "hey_alfred.onnx"
+# personagem = "alfred"
+# [chamados.palavras.ei_alfred]
+# ativa = false

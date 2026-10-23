@@ -19,7 +19,7 @@ class VoiceLoop:
         self.config, self.orchestrator, self.stt = config, orchestrator, transcriber
         self.tts, self.recorder, self.log, self.out = tts, recorder, log, out
 
-    def handle_audio(self, audio, speech_end: float) -> None:
+    def handle_audio(self, audio, speech_end: float, personagem: str = "alfred") -> None:
         """Processa uma gravação (já solta o atalho). `speech_end` vem de time.perf_counter()."""
         if len(audio) < self.config.voice.min_record_s * SAMPLE_RATE:
             return  # toque acidental no atalho
@@ -42,7 +42,7 @@ class VoiceLoop:
 
         print("fidus> ", end="", flush=True)
         try:
-            self.orchestrator.run(text, on_text=on_text)
+            self.orchestrator.run(text, on_text=on_text, personagem_ativo=personagem)
         except Exception as e:
             self.out(f"\nErro: {type(e).__name__}: {e}")
             self.tts.speak("Desculpe, algo deu errado.")
@@ -50,7 +50,7 @@ class VoiceLoop:
             self.tts.speak(rest)
         print()
         self.tts.wait_idle()
-        self.log.event("metricas_pedido", **t.as_log(), rss_mb=rss_mb(), texto_chars=len(text))
+        self.log.event("metricas_pedido", **t.as_log(), rss_mb=rss_mb(), texto_chars=len(text), personagem=personagem)
 
     def run(self) -> None:
         v = self.config.voice
