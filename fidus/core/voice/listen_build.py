@@ -17,8 +17,10 @@ def make_manager(config: Config, stream_factory=None) -> AudioManager:
     return AudioManager(device, config.wake.ring_s, stream_factory)
 
 
-def build_listen_loop(config: Config, include_test: bool = False):
+def build_listen_loop(config: Config, include_test: bool = False, events=None, broker_events=None):
     from ..assistant import build_assistant, build_speaker
+    from ..bridge.confirm import ConfirmBroker
+    from ..bridge.events import NullEvents
     from ..permissions import cli_confirmer
     from .audio_manager import to_float32
     from .confirm import VoiceConfirmer
@@ -33,6 +35,11 @@ def build_listen_loop(config: Config, include_test: bool = False):
     log = ActionLog(config.log_path)
     wake = config.wake
     manager = make_manager(config)
+    ui = events or NullEvents()  # interface (Electron), se houver
+    if events is not None:  # o anel reage ao nível do microfone, mas só enquanto há interface conectada
+        manager.on_level = lambda values: ui.emit("level", values=values)
+        manager.level_enabled = lambda: ui.has_clients
+    broker = ConfirmBroker(broker_events) if broker_events is not None else None
     tts = TTSManager(config.voice.speech_rate)
     stt = Transcriber(config, log)
     vad = load_vad(wake.vad_threshold)
@@ -57,21 +64,24 @@ def build_listen_loop(config: Config, include_test: bool = False):
         # a resposta "sim/não" usa o MESMO fluxo de microfone, por uma gravação temporária
         cap = manager.open_capture(0.0)
         try:
-            audio, _ = capture_utterance(cap, vad, SilenceEndpointer(0.8, timeout + 5, timeout))
+            audio, _ = capture_utterance(cap, vad, SilenceEndpointer(0.8, timeout + 5, timeout), broker.is_answered if broker else (lambda: False))
         finally:
             cap.close()
         return stt.transcribe(to_float32(audio)) if audio is not None else None
 
     speaker_ref: dict = {}
-    confirm = VoiceConfirmer(
-        speak_and_wait, listen, cli_confirmer, config.voice.confirm_timeout_s,
+    voice_confirm = VoiceConfirmer(
+        speak_and_wait, listen, broker.wait_ui if broker else cli_confirmer, config.voice.confirm_timeout_s,
         intro=lambda: speaker_ref["s"].text_for(orchestrator.personagem_ativo, "confirmar"),
     )
+    # com interface: o pedido aparece na tela e é falado; vale o primeiro "sim/não" (clique ou voz)
+    confirm = (lambda prompt: broker.run(prompt, voice_confirm)) if broker else voice_confirm
     orchestrator, persona, _ = build_assistant(config, confirm, log=log)
     speaker = build_speaker(config, persona, tts)
     speaker_ref["s"] = speaker
-    handler = VoiceLoop(config, orchestrator, stt, tts, None, log, speaker=speaker)
-    loop = ListenLoop(config, manager, runner, vad, handler, tts, indicator, log, speaker=speaker)
+    handler = VoiceLoop(config, orchestrator, stt, tts, None, log, speaker=speaker, events=ui)
+    loop = ListenLoop(config, manager, runner, vad, handler, tts, indicator, log, speaker=speaker, events=ui)
+    loop.broker = broker
     loop_ref["loop"] = loop
     stt.load()  # o Whisper carrega uma vez, antes de começar a escutar
     if config.characters.speak_start:

@@ -229,3 +229,9 @@ token.json
 # Modelos de palavra de ativação treinados (pessoais)
 models/wakewords/*.onnx
 models/wakewords/*.tflite
+
+# Interface Electron (app/)
+node_modules/
+app/dist/
+app/dist-electron/
+.tmp-sim-home/

@@ -9,6 +9,7 @@ import unicodedata
 
 from ..actionlog import ActionLog
 from ..config import Config
+from ..bridge.events import NullEvents
 from ..metrics import Timings, rss_mb
 from .sentences import SentenceSplitter
 from .hotkey import GlobalKeyListener, PushToTalk, parse_hotkey
@@ -28,10 +29,11 @@ def is_farewell(text: str) -> bool:
 
 
 class VoiceLoop:
-    def __init__(self, config: Config, orchestrator, transcriber, tts, recorder, log: ActionLog, out=print, speaker=None):
+    def __init__(self, config: Config, orchestrator, transcriber, tts, recorder, log: ActionLog, out=print, speaker=None, events=None):
         self.config, self.orchestrator, self.stt = config, orchestrator, transcriber
         self.tts, self.recorder, self.log, self.out = tts, recorder, log, out
         self.speaker = speaker  # PersonaSpeaker (opcional): voz e falas do personagem
+        self.ui = events or NullEvents()  # interface (opcional): legendas, estado, personagem
 
     def handle_audio(self, audio, speech_end: float, personagem: str = "alfred") -> bool:
         """Processa uma gravação. `speech_end` vem de time.perf_counter(). Devolve True se o usuário se despediu
@@ -45,20 +47,34 @@ class VoiceLoop:
             self.out("(não ouvi nada)")
             return False
         self.out(f"você> {text}")
+        if self.speaker and self.ui.has_clients:
+            self.ui.emit("character", **self.speaker.persona.ui_profile(personagem))
+        self.ui.emit("caption", role="user", text=text, final=True)
+        self.ui.emit("state", state="thinking", mic="paused")
         if self.speaker:
             self.speaker.apply_voice(personagem)  # a voz do personagem chamado
             if is_farewell(text):  # despedida: responde com a fala do personagem, sem chamar o modelo
                 said = self.speaker.say_moment(personagem, "despedida", wait=True)
                 if said:
                     self.out(f"fidus> {said}")
+                    self.ui.emit("caption", role="assistant", text=said, final=True)
                     return True
 
         splitter = SentenceSplitter()
-        self.tts.on_start = t.mark_speech_start
+        spoke = []
+
+        def on_speech_start() -> None:
+            t.mark_speech_start()
+            if not spoke:
+                spoke.append(1)
+                self.ui.emit("state", state="speaking", mic="paused")
+
+        self.tts.on_start = on_speech_start
 
         def on_text(chunk: str) -> None:
             t.mark_first_word()
             print(chunk, end="", flush=True)
+            self.ui.emit("caption", role="assistant", text=chunk, final=False)
             for sentence in splitter.feed(chunk):
                 self.tts.speak(sentence)  # fala frase a frase, sem esperar o fim da resposta
 
@@ -74,6 +90,7 @@ class VoiceLoop:
         if (rest := splitter.flush()):
             self.tts.speak(rest)
         print()
+        self.ui.emit("caption", role="assistant", text="", final=True)  # fecha a legenda (o texto veio em pedaços)
         self.tts.wait_idle()
         self.log.event("metricas_pedido", **t.as_log(), rss_mb=rss_mb(), texto_chars=len(text), personagem=personagem)
         return False

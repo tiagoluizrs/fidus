@@ -63,3 +63,8 @@ class PersonaService:
 
     def voice(self, cid: str | None) -> Voice:
         return self.profile(cid).voice
+
+    def ui_profile(self, cid: str | None) -> dict:
+        """O que a interface precisa saber do personagem: nome, chamado e as cores do anel."""
+        p = self.profile(cid)
+        return {"id": p.id, "name": p.name, "call": p.call, "ring": p.ring}
