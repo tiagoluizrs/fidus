@@ -34,6 +34,8 @@ def _http(url: str, data: bytes | None, headers: dict) -> dict:
 
 
 class Slack:
+    _cache_key: tuple[str, ...] = ()
+
     def __init__(self, config: Config, token: str | None = None, http: Callable[[str, bytes | None, dict], dict] = _http):
         self.config = config
         self._token = token
@@ -72,7 +74,9 @@ class Slack:
         return self._users[uid]
 
     def channels(self) -> list[Channel]:
-        if self._allowed_cache is None:
+        key = tuple(self.config.accounts.slack_channels)
+        if self._allowed_cache is None or key != self._cache_key:  # lista mudou na tela: não usa a antiga
+            self._cache_key = key
             wanted = {c.lower().lstrip("#") for c in self.config.accounts.slack_channels}
             found: list[Channel] = []
             cursor = None
@@ -90,9 +94,11 @@ class Slack:
 
     def _resolve(self, channel: str) -> Channel:
         key = channel.strip().lower().lstrip("#")
-        for c in self.channels():
-            if key in {c.id.lower(), c.name.lower()}:
-                return c
+        for attempt in range(2):
+            for c in self.channels():
+                if key in {c.id.lower(), c.name.lower()}:
+                    return c
+            self._allowed_cache = None  # não achou: confere de novo no Slack (canal novo, ou o app ganhou acesso agora)
         raise NotConnected(f"'{channel}' não está na lista de canais permitidos ([contas.slack] canais_permitidos).")
 
     def read(self, channel: str, limit: int, text_chars: int) -> list[ChatMessage]:

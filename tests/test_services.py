@@ -398,3 +398,12 @@ def test_cofre_em_arquivo_do_docker_guarda_e_apaga(tmp_path, monkeypatch):
     assert vault.delete_secret(vault.ANTHROPIC_KEY) is True
     assert vault.get_vault_secret(vault.ANTHROPIC_KEY) is None
     assert vault.delete_secret(vault.ANTHROPIC_KEY) is False
+
+
+def test_slack_enxerga_canal_adicionado_depois_sem_reiniciar(config):
+    s, _ = slack(config)
+    assert [c.name for c in s.channels()] == ["geral", "Carlos"]
+    with pytest.raises(NotConnected):
+        s.read("diretoria", 3, 100)  # ainda não liberado
+    config.accounts.slack_channels.append("diretoria")  # liberado pela tela, com o mesmo serviço já em uso
+    assert s.read("diretoria", 1, 100)
