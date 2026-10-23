@@ -350,3 +350,35 @@ def test_qwen3_vai_sem_raciocinio_e_outros_modelos_nao_recebem_a_opcao(fake):
     OllamaProvider("qwen3:8b", f.url).complete("s", [Message("user", text="x")], [])
     OllamaProvider("llama3.1:8b", f.url).complete("s", [Message("user", text="x")], [])
     assert f.requests[0]["think"] is False and "think" not in f.requests[1]
+
+
+def test_runner_sobe_o_ollama_fechado_e_so_encerra_o_que_ele_abriu(monkeypatch):
+    from fidus.core.providers import ollama_runner as r
+
+    up = {"v": False}
+    started = []
+
+    class P:
+        def poll(self):
+            return None
+
+        def terminate(self):
+            started.append("terminate")
+
+        def wait(self, timeout=None): ...
+
+    monkeypatch.setattr(r, "is_up", lambda url, timeout=1.5: up["v"])
+    monkeypatch.setattr(r, "find_binary", lambda: "ollama")
+    monkeypatch.setattr(r.subprocess, "Popen", lambda *a, **k: (started.append("popen"), up.__setitem__("v", True), P())[2])
+    monkeypatch.setattr(r, "_proc", None)
+    assert r.ensure_running("http://127.0.0.1:11434") and started == ["popen"]
+    assert r.stop() and started == ["popen", "terminate"]
+    assert not r.stop()  # nada mais a encerrar
+
+
+def test_runner_nao_encerra_ollama_que_ja_estava_aberto(monkeypatch):
+    from fidus.core.providers import ollama_runner as r
+
+    monkeypatch.setattr(r, "is_up", lambda url, timeout=1.5: True)
+    monkeypatch.setattr(r, "_proc", None)
+    assert r.ensure_running("http://127.0.0.1:11434") and not r.stop()

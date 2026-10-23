@@ -32,6 +32,7 @@ SCHEMA: dict[str, Rule] = {
     # --- Chamados ---
     "chamados.personagem_padrao": Rule("choice", choices=("alfred", "donna", "jarbis")),
     "chamados.som_ao_ouvir": Rule("bool"),
+    "chamados.modo": Rule("choice", choices=("auto", "voz", "modelo")),  # como o Fidus percebe o "ei Alfred"
     "chamados.sensibilidade": Rule("int", 0, 100),
     "chamados.esperar_fala_s": Rule("float", 2, 15),
     "chamados.silencio_fim_s": Rule("float", 0.5, 5),
@@ -74,7 +75,7 @@ SCHEMA: dict[str, Rule] = {
 }
 
 # Chaves que só valem depois de reiniciar o núcleo (o Whisper, o microfone e os atalhos são abertos na partida).
-RESTART_REQUIRED = {"voz.modelo_whisper", "voz.microfone", "voz.atalho", "chamados.atalho_silenciar", "voz.idioma"}
+RESTART_REQUIRED = {"chamados.modo", "voz.modelo_whisper", "voz.microfone", "voz.atalho", "chamados.atalho_silenciar", "voz.idioma"}
 
 
 class InvalidSetting(ValueError):
@@ -158,7 +159,7 @@ def effective(config) -> dict[str, Any]:
     return {
         "app.tema": a.theme, "app.idioma": a.language, "app.iniciar_com_windows": a.start_with_windows,
         "app.icone_bandeja": a.tray_icon, "app.icone": a.icon, "app.janela_inatividade_s": a.ring_idle_s,
-        "chamados.personagem_padrao": w.default_character, "chamados.som_ao_ouvir": w.beep,
+        "chamados.personagem_padrao": w.default_character, "chamados.modo": w.mode, "chamados.som_ao_ouvir": w.beep,
         "chamados.sensibilidade": config.sensitivity if config.sensitivity is not None else 60,
         "chamados.esperar_fala_s": w.wait_speech_s, "chamados.silencio_fim_s": w.silence_s,
         "chamados.continuacao_s": w.followup_s, "chamados.atalho_silenciar": w.mute_hotkey,

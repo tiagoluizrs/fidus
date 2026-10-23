@@ -267,3 +267,20 @@ def test_atalho_desligado_nas_configuracoes_e_ignorado(rig):
     rig.config.voice.hotkey_enabled = True
     rig.loop.ptt_down()
     assert rig.manager.state == "recording"
+
+
+def test_chamado_por_fala_ja_traz_o_texto_e_nao_grava_de_novo(rig):
+    rig.handler.texts = []
+    rig.handler.handle_text = lambda text, end, character: rig.handler.texts.append((text, character)) or False
+    rig.feed_script(((SILENCE, 30),))  # só o silêncio da janela de continuação
+    rig.loop.dispatch(("wake", Activation(DONNA, 1.0, time.perf_counter(), text="que horas são")))
+    rig.done.set()
+    assert rig.handler.texts == [("que horas são", "donna")]  # sem fala de início, sem gravar o pedido de novo
+    assert rig.loop.state.value == "sleeping"
+    assert any(e.get("por_fala") for e in log_events(rig.config) if e["type"] == "chamado")
+
+
+def test_chamado_por_fala_com_despedida_encerra_sem_esperar_continuacao(rig):
+    rig.handler.handle_text = lambda text, end, character: True
+    rig.loop.dispatch(("wake", Activation(DONNA, 1.0, time.perf_counter(), text="tchau")))
+    assert rig.loop.state.value == "sleeping" and not rig.handler.calls if hasattr(rig.handler, "calls") else True

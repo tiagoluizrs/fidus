@@ -240,3 +240,87 @@ def test_avisar_que_o_microfone_do_navegador_ligou_muda_o_indicador(config, monk
     assert ("state", {"state": "idle", "mic": "off"}) in sink.seen
     with pytest.raises(ValueError):
         cmds.handle("browser_mic", {"on": "sim"})
+
+
+# ---------- voz do personagem gerada no núcleo e tocada pelo navegador ----------
+
+
+def wait_for(pred, t=3):
+    return wait(pred, t)
+
+
+def test_locutor_divide_em_frases_limpa_o_texto_e_manda_o_audio_na_ordem():
+    from fidus.core.bridge.headless import SentenceSpeaker, clean_for_speech
+
+    out = []
+    sp = SentenceSpeaker(lambda text: text.encode(), lambda t, **d: out.append((t, d)))
+    for pedaco in ["Olá, **tu", "do bem?** Hoje é ", "sexta. Veja https://x.com/a ", "e pronto"]:
+        sp.feed(pedaco)
+    sp.finish()
+    sp.thread.join(3)
+    falas = [d["text"] for t, d in out if t == "speak_audio"]
+    assert falas == ["Olá, tudo bem?", "Hoje é sexta.", "Veja e pronto"]  # sem asteriscos nem links, na ordem
+    assert [d["seq"] for t, d in out] == [1, 2, 3]
+    import base64
+
+    assert base64.b64decode(out[0][1]["wav"]) == "Olá, tudo bem?".encode()
+    assert clean_for_speech("  # Título 😀 `código`  ") == "Título código"
+
+
+def test_falha_na_sintese_vira_erro_e_nao_derruba_as_proximas_frases():
+    from fidus.core.bridge.headless import SentenceSpeaker
+
+    out = []
+
+    def synth(text):
+        if "ruim" in text:
+            raise RuntimeError("piper quebrou")
+        return b"ok"
+
+    sp = SentenceSpeaker(synth, lambda t, **d: out.append((t, d)))
+    sp.feed("Frase ruim. Frase boa.")
+    sp.finish()
+    sp.thread.join(3)
+    assert any(t == "error" and "piper quebrou" in d["message"] for t, d in out)
+    assert [d["text"] for t, d in out if t == "speak_audio"] == ["Frase boa."]
+
+
+def test_voz_do_sistema_cai_no_navegador_e_piper_instalado_fala_pelo_nucleo(config, monkeypatch, tmp_path):
+    from fidus.core.voice import tts as ttsmod
+
+    cmds, loop, sink = make(config, [Response("Tudo certo. Pode seguir.")], monkeypatch, tmp_path)
+    cmds.handle("ask", {"text": "oi"})
+    assert wait_for(lambda: ("voice_mode", {"mode": "browser", "engine": "sapi"}) in sink.seen)  # padrão: voz do navegador
+    assert wait_for(lambda: loop._busy.acquire(blocking=False))
+    loop._busy.release()
+
+    cmds.handle("characters", {"op": "set_voice", "id": "alfred", "engine": "piper", "voice": "pt_BR-faber-medium"})
+    assert loop._server_voice("alfred") is None  # sem Piper instalado: continua no navegador
+    store = tmp_path / "data" / "piper"
+    (store / "piper").mkdir(parents=True)
+    (store / "piper" / ("piper.exe" if __import__("sys").platform == "win32" else "piper")).write_bytes(b"x")
+    (store / "voices").mkdir()
+    (store / "voices" / "pt_BR-faber-medium.onnx").write_bytes(b"m")
+    (store / "voices" / "pt_BR-faber-medium.onnx.json").write_bytes(b"{}")
+
+    class FakeTTS:
+        def use(self, voice):
+            self.voice = voice
+
+        def synthesize(self, text, path):
+            path.write_bytes(b"RIFF" + text.encode())
+            return True
+
+    loop._tts = FakeTTS()
+    sink.seen.clear()
+    loop.orchestrator.provider.responses = [Response("Tudo certo. Pode seguir.")]
+    cmds.handle("ask", {"text": "oi de novo"})
+    assert wait_for(lambda: sum(1 for t, _ in sink.seen if t == "speak_audio") == 2)
+    assert ("voice_mode", {"mode": "server", "engine": "piper"}) in sink.seen
+    assert [d["text"] for t, d in sink.seen if t == "speak_audio"] == ["Tudo certo.", "Pode seguir."]
+
+
+def test_ouvir_amostra_no_modo_navegador_gera_a_voz_ou_explica(config, monkeypatch, tmp_path):
+    cmds, loop, sink = make(config, [], monkeypatch, tmp_path)
+    r = cmds.handle("characters", {"op": "preview", "id": "alfred"})
+    assert r["spoken"] is False and "Piper" in r["reason"]  # voz do sistema não toca aqui

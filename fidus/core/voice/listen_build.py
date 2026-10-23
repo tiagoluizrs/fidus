@@ -45,10 +45,22 @@ def build_listen_loop(config: Config, include_test: bool = False, events=None, b
     vad = load_vad(wake.vad_threshold)
     indicator = Indicator()
 
-    detector, active = load_detector(config, log, include_test)
+    detector, active = (None, []) if wake.mode == "voz" else load_detector(config, log, include_test)
     runner = None
     loop_ref: dict = {}
-    if detector:
+    persona_ref: dict = {}
+    if detector is None and wake.mode in ("auto", "voz"):
+        # sem modelo treinado (ou por escolha): percebe o "ei Alfred" pela fala, com VAD + Whisper local
+        from .speech_wake import SpeechWakeRunner
+
+        runner = SpeechWakeRunner(
+            manager, load_vad(wake.vad_threshold), stt,
+            lambda: {c: persona_ref["p"].ui_profile(c)["name"] for c in persona_ref["p"].ids()},
+            {w.character: w for w in wake.words}, lambda act: loop_ref["loop"].on_activation(act),
+            silence_s=0.8,
+        )
+        print("Chamado por reconhecimento de fala: diga o nome do personagem (ex.: “ei Alfred, que horas são?”).")
+    elif detector:
         gate = ActivationGate(active, wake.cooldown_s)
         runner = DetectorRunner(manager, detector, gate, lambda act: loop_ref["loop"].on_activation(act))
         names = ", ".join(w.id + (" (SOMENTE TESTE)" if w.test_only else "") for w in active)
@@ -79,6 +91,7 @@ def build_listen_loop(config: Config, include_test: bool = False, events=None, b
     # com interface: o pedido aparece na tela e é falado; vale o primeiro "sim/não" (clique ou voz)
     confirm = (lambda prompt: broker.run(prompt, voice_confirm)) if broker else voice_confirm
     orchestrator, persona, _ = build_assistant(config, confirm, log=log)
+    persona_ref["p"] = persona
     speaker = build_speaker(config, persona, tts)
     speaker_ref["s"] = speaker
     handler = VoiceLoop(config, orchestrator, stt, tts, None, log, speaker=speaker, events=ui)

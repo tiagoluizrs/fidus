@@ -104,7 +104,7 @@
       var d = new Float32Array(ev.inputBuffer.getChannelData(0)), sum = 0;
       for (var i = 0; i < d.length; i++) sum += d[i] * d[i];
       var rms = Math.sqrt(sum / d.length);
-      var busy = assistBusy || muted || (window.speechSynthesis && speechSynthesis.speaking);
+      var busy = assistBusy || muted || audioPlaying || playQueue.length > 0 || (window.speechSynthesis && speechSynthesis.speaking);
       if (!seg) {
         if (busy && !ptt) { pre = []; loud = 0; return; }
         pre.push(d); if (pre.length > 3) pre.shift();
@@ -153,13 +153,39 @@
       label();
     }
 
-    // resposta em voz (só neste modo de teste): usa a voz do navegador
+    // voz gerada pelo NÚCLEO (Piper ou voz da nuvem): chega como áudio, frase a frase, e toca em ordem
+    var serverVoice = false, playQueue = [], audioPlaying = false, curAudio = null, wasPlaying = false;
+    function stopAudio() {
+      playQueue = [];
+      if (curAudio) { try { curAudio.pause(); } catch (e) {} curAudio = null; }
+      audioPlaying = false;
+    }
+    function playNext() {
+      if (audioPlaying) return;
+      var item = playQueue.shift();
+      if (!item) { if (wasPlaying) { wasPlaying = false; idleState(); } return; }
+      audioPlaying = true; wasPlaying = true;
+      emit({ type: "state", state: "speaking", mic: "paused" });
+      var bytes = Uint8Array.from(atob(item.wav), function (c) { return c.charCodeAt(0); });
+      var url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+      var a = new Audio(url); curAudio = a;
+      var done = function () { URL.revokeObjectURL(url); if (curAudio === a) { curAudio = null; audioPlaying = false; playNext(); } };
+      a.onended = done; a.onerror = done;
+      a.play().catch(done);
+    }
+    listeners.add(function (e) {
+      if (e.type === "voice_mode") serverVoice = e.mode === "server";
+      if (e.type === "speak_audio" && speakOn) { playQueue.push(e); playNext(); }
+      if (e.type === "caption" && e.role === "user") stopAudio();
+    });
+
+    // resposta em voz pela voz do navegador (quando o personagem usa a voz do sistema, que só existe no Windows)
     var said = "";
     listeners.add(function (e) {
       if (e.type === "caption" && e.role === "user") { said = ""; if (window.speechSynthesis) window.speechSynthesis.cancel(); }
       if (e.type === "caption" && e.role === "assistant") {
         if (!e.final) said += e.text;
-        else if (said.trim() && speakOn && window.speechSynthesis) {
+        else if (said.trim() && speakOn && !serverVoice && window.speechSynthesis) {
           var u = new SpeechSynthesisUtterance(said.trim()); u.lang = "pt-BR";
           var v = speechSynthesis.getVoices().filter(function (x) { return /^pt/i.test(x.lang); })[0]; if (v) u.voice = v;
           speechSynthesis.speak(u);
@@ -205,7 +231,7 @@
       document.getElementById("fidus-falar").onchange = function (ev) {
         speakOn = ev.target.checked;
         try { localStorage.setItem("fidus-falar", speakOn ? "1" : "0"); } catch (e) {}
-        if (!speakOn && window.speechSynthesis) speechSynthesis.cancel();
+        if (!speakOn) { if (window.speechSynthesis) speechSynthesis.cancel(); stopAudio(); }
       };
       document.getElementById("fidus-form").onsubmit = function (e) {
         e.preventDefault();

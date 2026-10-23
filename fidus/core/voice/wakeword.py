@@ -25,6 +25,7 @@ class Activation:
     word: WakeWord
     score: float
     t: float  # time.perf_counter() do momento da detecção
+    text: str | None = None  # só no chamado por fala: o pedido que veio junto ("ei Alfred, que horas são" -> "que horas são")
 
 
 class WakeWordDetector(Protocol):

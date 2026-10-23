@@ -6,8 +6,12 @@ from .base import Provider
 
 def create_provider(config: Config) -> Provider:
     if config.provider == "local":
-        from .ollama import OllamaProvider  # import preguiçoso
+        import threading
 
+        from .ollama import OllamaProvider  # import preguiçoso
+        from .ollama_runner import ensure_running
+
+        threading.Thread(target=ensure_running, args=(config.local_url,), daemon=True).start()  # já deixa o Ollama de pé
         return OllamaProvider(config.local_model, config.local_url)
     if config.provider == "gemini":
         from .. import secrets as vault
@@ -24,6 +28,10 @@ def sync_provider(orch, config: Config) -> bool:
     current = orch.provider
     kind = getattr(current, "kind", None)  # provedores sem `kind` (dublês de teste) só têm o modelo ajustado
     if kind is not None and kind != config.provider:
+        if kind == "local":
+            from .ollama_runner import stop
+
+            stop()  # saiu do modelo local: desliga o Ollama (só se foi o Fidus que o abriu)
         orch.provider = create_provider(config)
         return True
     if hasattr(current, "model"):

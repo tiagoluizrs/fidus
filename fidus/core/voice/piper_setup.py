@@ -7,8 +7,10 @@ esperado é descartado antes de ser usado. Nada é baixado sem o usuário pedir.
 from __future__ import annotations
 
 import hashlib
+import platform
 import shutil
 import sys
+import tarfile
 import urllib.request
 import zipfile
 from collections.abc import Callable
@@ -18,6 +20,8 @@ Progress = Callable[[int, int], None]  # (bytes baixados, total; 0 se desconheci
 
 PIPER_URL = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip"
 PIPER_SHA256 = "f3c58906402b24f3a96d92145f58acba6d86c9b5db896d207f78dc80811efcea"
+LINUX_URL = "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"  # teste no Docker/Linux
+LINUX_SHA256 = "a50cb45f355b7af1f6d758c1b360717877ba0a398cc8cbe6d2a7a3a26e225992"
 _HF = "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR"
 
 # Vozes pt-BR do catálogo oficial do Piper (todas masculinas, qualidade média). Hash do .onnx = SHA-256 do arquivo LFS.
@@ -72,7 +76,7 @@ class PiperStore:
 
     def status(self) -> dict:
         return {
-            "supported": sys.platform == "win32",  # o programa baixado é o de Windows
+            "supported": _package() is not None,  # Windows x64 (app instalado) ou Linux x86_64 (teste no Docker)
             "installed": self.exe.is_file(),
             "download_mb": 22,
             "voices": [
@@ -84,22 +88,25 @@ class PiperStore:
     # ---- instalar ----
 
     def install_piper(self, progress: Progress | None = None) -> None:
-        self._require_windows()
-        zip_path = self.root / "piper.zip.part"
-        self._download(PIPER_URL, zip_path, PIPER_SHA256, progress)
+        pkg = _package()
+        if pkg is None:
+            raise SetupError("O instalador do Piper não está disponível para este sistema (só Windows e Linux x86_64).")
+        url, sha, kind = pkg
+        zip_path = self.root / "piper.pkg.part"
+        self._download(url, zip_path, sha, progress)
         target = self.root / "piper"
         tmp = self.root / "piper.tmp"
         shutil.rmtree(tmp, ignore_errors=True)
         try:
-            _safe_extract(zip_path, tmp)
-            inner = tmp / "piper"  # o zip traz tudo dentro de uma pasta "piper"
+            (_safe_extract_tar if kind == "tar" else _safe_extract)(zip_path, tmp)
+            inner = tmp / "piper"  # o pacote traz tudo dentro de uma pasta "piper"
             shutil.rmtree(target, ignore_errors=True)
             shutil.move(str(inner if inner.is_dir() else tmp), str(target))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
             zip_path.unlink(missing_ok=True)
         if not self.exe.is_file():
-            raise SetupError("O pacote do Piper não trouxe o piper.exe.")
+            raise SetupError("O pacote do Piper não trouxe o programa.")
 
     def download_voice(self, voice: str, progress: Progress | None = None) -> None:
         if voice not in VOICES:
@@ -120,10 +127,6 @@ class PiperStore:
             (self.voices_dir / f"{voice}{ext}").unlink(missing_ok=True)
 
     # ---- interno ----
-
-    def _require_windows(self) -> None:
-        if sys.platform != "win32":
-            raise SetupError("O instalador do Piper é só para Windows.")
 
     def _download(self, url: str, dest: Path, sha256: str, progress: Progress | None) -> None:
         if not url.startswith("https://"):
@@ -149,6 +152,25 @@ class PiperStore:
             raise SetupError("O arquivo baixado não confere com o esperado (hash diferente). Descartei por segurança.")
         if part != dest:
             part.replace(dest)
+
+
+def _package() -> tuple[str, str, str] | None:
+    """(endereço, sha256, formato) do programa do Piper para este sistema, ou None se não há."""
+    if sys.platform == "win32":
+        return PIPER_URL, PIPER_SHA256, "zip"
+    if sys.platform.startswith("linux") and platform.machine().lower() in ("x86_64", "amd64"):
+        return LINUX_URL, LINUX_SHA256, "tar"
+    return None
+
+
+def _safe_extract_tar(tar_path: Path, dest: Path) -> None:
+    dest.mkdir(parents=True, exist_ok=True)
+    root = dest.resolve()
+    with tarfile.open(tar_path) as t:
+        for m in t.getmembers():
+            if not (root / m.name).resolve().is_relative_to(root) or m.issym() and not (root / m.name).parent.joinpath(m.linkname).resolve().is_relative_to(root) or m.isdev():
+                raise SetupError("Pacote com caminho suspeito; abortei.")
+        t.extractall(dest, filter="data")  # mantém a permissão de execução e recusa o que for perigoso
 
 
 def _safe_extract(zip_path: Path, dest: Path) -> None:

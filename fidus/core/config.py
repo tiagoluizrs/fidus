@@ -83,6 +83,7 @@ class WakeConfig:
     max_record_s: float = 15.0
     wait_speech_s: float = 5.0  # após o chamado, quanto esperar o início da fala
     followup_s: float = 5.0  # após a resposta, quanto esperar uma continuação sem chamar de novo
+    mode: str = "auto"  # como perceber o chamado: auto (modelo treinado se houver, senão fala) | voz (Whisper) | modelo (só treinado)
     preroll_call_s: float = 0.0  # áudio anterior ao chamado incluído na gravação (0 = só depois dele)
     preroll_ptt_s: float = 0.5
     beep: bool = False  # sinal sonoro ao começar a ouvir
@@ -330,6 +331,7 @@ def _apply_wake(w: WakeConfig, d: dict) -> None:
     w.max_record_s = float(d.get("max_gravacao_s", w.max_record_s))
     w.wait_speech_s = float(d.get("esperar_fala_s", w.wait_speech_s))
     w.followup_s = float(d.get("continuacao_s", w.followup_s))
+    w.mode = d.get("modo", w.mode) if d.get("modo", w.mode) in ("auto", "voz", "modelo") else w.mode
     w.preroll_call_s = float(d.get("preroll_chamado_s", w.preroll_call_s))
     w.preroll_ptt_s = float(d.get("preroll_atalho_s", w.preroll_ptt_s))
     w.beep = bool(d.get("som_ao_ouvir", w.beep))
