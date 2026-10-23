@@ -257,3 +257,16 @@ describe("tela Contas: credenciais do Google e login pelo navegador", () => {
     expect(link).toHaveAttribute("rel", expect.stringContaining("noreferrer"));
   });
 });
+
+describe("Conectar o Google sem credenciais", () => {
+  it("o botão Conectar fica desabilitado até enviar o credentials.json", async () => {
+    installFakeCore();
+    const user = await open("Contas");
+    await user.click(await screen.findByRole("button", { name: "Remover" }));
+    await screen.findByText("Falta enviar");
+    const agenda = screen.getByLabelText("Google Agenda");
+    expect(within(agenda).getByRole("button", { name: "Conectar" })).toBeDisabled();
+    expect(within(screen.getByLabelText("Slack")).getByRole("button", { name: "Conectar" })).toBeEnabled(); // o Slack não usa o Google
+    expect(screen.getAllByText(/Envie o credentials.json do Google/).length).toBeGreaterThan(0);
+  });
+});

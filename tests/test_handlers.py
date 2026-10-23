@@ -223,18 +223,10 @@ def test_conectar_slack_valida_guarda_no_cofre_e_desconecta(cmds, config, monkey
     assert "SLACK_TOKEN" not in fv.d and not {x["id"]: x for x in r["services"]}["slack"]["connected"]
 
 
-def test_conectar_google_sem_credenciais_avisa_pelo_evento(cmds, config, monkeypatch):
+def test_conectar_google_sem_credenciais_recusa_antes_de_abrir_o_login(cmds, config, monkeypatch):
     FakeVault().install(monkeypatch)
-    r = call(cmds, "accounts", op="connect", service="gmail", write=True)
-    assert r["started"] is True
-    import time
-
-    for _ in range(50):
-        if any(t == "accounts" for t, _ in cmds.sink.seen):
-            break
-        time.sleep(0.05)
-    ev = next(d for t, d in cmds.sink.seen if t == "accounts")
-    assert ev["status"] == "error" and "credenciais OAuth" in ev["message"]
+    with pytest.raises(ValueError, match="Envie primeiro o credentials.json"):
+        call(cmds, "accounts", op="connect", service="gmail", write=True)
     with pytest.raises(ValueError):
         call(cmds, "accounts", op="connect", service="outlook")
 
@@ -645,3 +637,10 @@ def test_login_do_google_no_modo_headless_entrega_o_link_e_usa_porta_fixa(cmds, 
         time.sleep(0.02)
     assert ("open_url", {"url": "https://accounts.google.com/o/oauth2/auth?x=1"}) in cmds.sink.seen
     assert seen["port"] == google_auth.OAUTH_PORT and seen["bind_addr"] == "0.0.0.0" and seen["host"] == "localhost"
+
+
+def test_conectar_o_google_sem_o_credentials_json_avisa_na_hora(cmds, config):
+    assert not config.google_credentials_path.exists()
+    with pytest.raises(ValueError, match="Envie primeiro o credentials.json"):
+        call(cmds, "accounts", op="connect", service="agenda")
+    assert not any(t == "open_url" for t, _ in cmds.sink.seen)
