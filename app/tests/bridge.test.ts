@@ -118,7 +118,7 @@ describe.skipIf(!hasUv)("protocolo contra o núcleo simulado (Python)", () => {
     const c = new BridgeClient();
     const snapshot = await c.connect(info.port, info.token);
     expect(snapshot.character.id).toBe("alfred");
-    expect(snapshot.characters.map((x) => x.id).sort()).toEqual(["alfred", "donna", "jarbis"]);
+    expect(snapshot.characters.map((x) => x.id).sort()).toEqual(["alfred", "custom", "donna", "jarbis"]);
     expect(snapshot.model).toMatchObject({ provider: "claude", where: "Nuvem" });
 
     const events: CoreEvent[] = [];

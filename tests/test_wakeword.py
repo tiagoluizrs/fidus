@@ -99,7 +99,7 @@ def test_config_de_chamados_do_toml(tmp_path, monkeypatch):
 
 def test_padroes_pedidos():
     w = Config().wake
-    assert (w.silence_s, w.max_record_s, w.followup_s, w.beep, w.cooldown_s, w.ring_s) == (1.2, 15.0, 5.0, False, 2.0, 2.0)
+    assert (w.silence_s, w.max_record_s, w.followup_s, w.beep, w.cooldown_s, w.ring_s) == (2.5, 60.0, 60.0, False, 2.0, 2.0)
 
 
 # ---------- carga dos modelos ----------

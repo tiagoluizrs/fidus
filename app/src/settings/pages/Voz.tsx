@@ -32,7 +32,7 @@ function Meter() {
   return (
     <div className="meter-row">
       <div className="meter" role="meter" aria-label="Nível de entrada" aria-valuemin={0} aria-valuemax={100}><div ref={bar} className="meter-bar" /></div>
-      <Button onClick={() => setTesting(true)} aria-pressed={testing}>{testing ? "Fale agora…" : "Testar"}</Button>
+      <Button onClick={() => { setTesting(true); void window.fidus.micTest?.(5); }} aria-pressed={testing}>{testing ? "Fale agora…" : "Testar"}</Button>
     </div>
   );
 }
@@ -75,11 +75,16 @@ export function Voz() {
           </select>
         </Row>
         {restartNeeded.includes("voz.microfone") && <p className="notice">O novo microfone vale depois de reiniciar o Fidus.</p>}
-        <Row label="Nível de entrada"><Meter /></Row>
-        <Row label="Encerrar depois de" hint="Quanto esperar você começar a falar depois do chamado.">
-          <Segmented label="Encerrar depois de" value={Math.round(Number(s("chamados.esperar_fala_s") ?? 5))}
-            onChange={(v) => save({ "chamados.esperar_fala_s": v })}
-            options={[{ value: 3, label: "3 s" }, { value: 5, label: "5 s" }, { value: 8, label: "8 s" }]} />
+        <Row label="Nível de entrada" hint="Clique em Testar e fale por 5 segundos: a barra mostra o nível e depois você ouve o que o microfone captou."><Meter /></Row>
+        <Row label="Desligar a escuta depois de" hint="Depois do chamado, o Fidus fica ouvindo e só desliga depois deste tempo sem você falar. Você não precisa chamar de novo a cada pergunta.">
+          <Segmented label="Desligar a escuta depois de" value={Math.round(Number(s("chamados.continuacao_s") ?? 60))}
+            onChange={(v) => save({ "chamados.continuacao_s": v, "chamados.esperar_fala_s": v })}
+            options={[{ value: 30, label: "30 s" }, { value: 60, label: "1 min" }, { value: 120, label: "2 min" }]} />
+        </Row>
+        <Row label="Pausa para pensar" hint="Quanto silêncio no meio da fala o Fidus espera antes de achar que você terminou.">
+          <Segmented label="Pausa para pensar" value={Number(s("chamados.silencio_fim_s") ?? 2.5)}
+            onChange={(v) => save({ "chamados.silencio_fim_s": v })}
+            options={[{ value: 1.5, label: "Curta" }, { value: 2.5, label: "Normal" }, { value: 4, label: "Longa" }]} />
         </Row>
       </Section>
 

@@ -85,7 +85,7 @@ class Handlers:
             return [{"id": i.id, "text": i.text} for i in self.store.deleted_items(cid, name)]
 
         return {
-            "id": pr.id, "name": pr.name, "call": pr.call, "summary": pr.summary, "ring": pr.ring,
+            "id": pr.id, "name": pr.name, "call": pr.call, "summary": pr.summary, "ring": pr.ring, "customizable": pr.customizable,
             "is_default": cid == self.persona.default_id(), "edited": self.store.has_user_edits(cid),
             "personality": {"base_style": pr.personality.base_style, "default_style": d["personality"]["base_style"],
                             "controls": controls, "extra": pr.personality.extra},
@@ -101,7 +101,7 @@ class Handlers:
         if op == "list":
             return {"characters": [
                 {"id": c, "name": (p := s.load(c)).name, "call": p.call, "summary": p.summary, "ring": p.ring,
-                 "is_default": c == self.persona.default_id(), "edited": s.has_user_edits(c)} for c in s.ids()]}
+                 "is_default": c == self.persona.default_id(), "edited": s.has_user_edits(c), "customizable": p.customizable} for c in s.ids()]}
         _need(a, "id")
         cid = a["id"]
         s.load(cid)  # valida que existe
@@ -118,6 +118,8 @@ class Handlers:
         elif op == "set_style":
             _need(a, "style")
             s.set_style(cid, a["style"])
+        elif op == "set_name":
+            s.set_name(cid, str(a.get("name", "")))
         elif op == "set_extra":
             s.set_extra(cid, str(a.get("text", ""))[:2000])
         elif op == "reset_personality":

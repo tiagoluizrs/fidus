@@ -242,7 +242,7 @@ def test_nucleo_simulado_anuncia_porta_e_token_e_encena_uma_conversa(config, mon
     ready = recv(ws)
     snap = ready["snapshot"]
     assert snap["character"]["id"] == "alfred" and snap["default_character"] == "alfred" and snap["model"]["name"] == "claude-sonnet-5-5"
-    assert {c["id"] for c in snap["characters"]} == {"alfred", "donna", "jarbis"} and len(snap["character"]["ring"]["dark"]) == 3
+    assert {c["id"] for c in snap["characters"]} == {"alfred", "donna", "jarbis", "custom"} and len(snap["character"]["ring"]["dark"]) == 3
 
     ws.send(protocol.encode({"type": "cmd", "id": "s", "name": "simulate", "args": {}}))
     events = []

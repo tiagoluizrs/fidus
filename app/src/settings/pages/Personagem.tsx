@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCore } from "../core";
 import { VoiceTab } from "./VoiceTab";
-import { Badge, Button, ConfirmDialog, Page, Section, Segmented, Slider, Switch, TextField } from "../ui";
+import { Badge, Button, ConfirmDialog, Page, Row, Section, Segmented, Slider, Switch, TextField } from "../ui";
 
 interface Item { id: string; text: string; enabled: boolean; origin: "padrao" | "editada" | "usuario"; contexts: string[] }
 interface ListData { items: Item[]; deleted: { id: string; text: string }[] }
 export interface Profile {
   id: string; name: string; call: string; summary: string; ring: { dark: string[]; light: string[] };
-  is_default: boolean; edited: boolean;
+  is_default: boolean; edited: boolean; customizable?: boolean;
   personality: { base_style: string; default_style: string; controls: Record<string, { value: number; default: number }>; extra: string };
   address: { mode: "random" | "fixed" | "context"; fixed: string; items: Item[]; deleted: { id: string; text: string }[] };
   phrases: Record<string, ListData>;
@@ -85,6 +85,7 @@ export function Personagem() {
               <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t}</button>
             ))}
           </div>
+          {tab === "Personalidade" && profile.customizable && <NameRow key={profile.id} name={profile.name} mutate={mutate} />}
           {tab === "Personalidade" && <PersonalityTab p={profile} mutate={mutate} />}
           {tab === "Frases" && <PhrasesTab p={profile} mutate={mutate} />}
           {tab === "Voz" && <VoiceTab p={profile} mutate={mutate} />}
@@ -95,6 +96,19 @@ export function Personagem() {
 }
 
 type Mutate = (op: string, args?: Record<string, unknown>) => Promise<boolean>;
+
+function NameRow({ name, mutate }: { name: string; mutate: Mutate }) {
+  const [value, setValue] = useState(name);
+  useEffect(() => setValue(name), [name]);
+  return (
+    <Section title="Nome" subtitle="É com ele que você chama: “ei” e o nome.">
+      <Row label="Nome do personagem" htmlFor="custom-name" hint="De 1 a 24 letras. O chamado por voz usa este nome (reconhecimento por fala, sem treinar modelo).">
+        <input id="custom-name" type="text" maxLength={24} value={value} onChange={(e) => setValue(e.target.value)}
+          onBlur={() => { if (value.trim() && value.trim() !== name) void mutate("set_name", { name: value }); else setValue(name); }} />
+      </Row>
+    </Section>
+  );
+}
 
 function PersonalityTab({ p, mutate }: { p: Profile; mutate: Mutate }) {
   const [confirm, setConfirm] = useState(false);

@@ -262,3 +262,20 @@ def test_sem_tratamento_a_pontuacao_fica_correta(entrada, saida):
     from fidus.core.characters.phrases import without_address
 
     assert without_address(entrada) == saida
+
+
+def test_personagem_personalizado_muda_de_nome_e_os_tres_padroes_nao(tmp_path):
+    store = CharacterStore(tmp_path / "u")
+    p = store.load("custom")
+    assert p.customizable and p.name == "Personalizado" and p.call == "ei Personalizado"
+    store.set_name("custom", "  Maria   Clara ")
+    p = store.load("custom")
+    assert (p.name, p.call) == ("Maria Clara", "ei Maria Clara")
+    for ruim in ("", "x" * 25, "<script>", "a=b"):
+        with pytest.raises(ValueError, match="1 a 24"):
+            store.set_name("custom", ruim)
+    with pytest.raises(ValueError, match="personalizado"):
+        store.set_name("alfred", "Outro")
+    assert store.load("alfred").name == "Alfred" and not store.load("alfred").customizable
+    store.reset_character("custom")
+    assert store.load("custom").name == "Personalizado"  # restaurar volta ao nome de fábrica
