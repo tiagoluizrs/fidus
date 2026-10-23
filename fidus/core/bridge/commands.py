@@ -136,6 +136,7 @@ class CoreCommands:
         return self.h.devices()
 
     def cmd_api_key(self, op: str = "status", value: str = ""):
+        self.h.loop = self.loop
         return self.h.api_key(op, value)
 
     def cmd_voices(self, engine: str = "sapi"):
