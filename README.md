@@ -533,6 +533,17 @@ Em Configurações > Personagem > **Voz** cada personagem escolhe entre quatro m
   documentação oficial). Se o seu plano não permitir criar vozes ou clonar, a tela mostra a mensagem do serviço.
 - As vozes do Piper do catálogo são masculinas (faber, cadu, jeff); o Piper também aceita outros modelos `.onnx`.
 
+## Logos e ícone do app
+
+As logos do design estão em [`app/assets/logo/`](app/assets/logo/), uma por arquivo (SVG com o texto já em contornos, sem
+depender de fonte): símbolo (claro e escuro), horizontal (claro e escuro), ícone do app (escuro, claro e colorido) e
+bandeja (preto e branco). Em `app/assets/logo/png/` há as versões em PNG (inclusive `fidus-icone-*-120.png`, o tamanho que
+o Google pede na tela de consentimento OAuth).
+
+Em **Configurações > Geral > Ícone do app** a pessoa escolhe a arte (escuro, claro ou colorido). Ela vale na hora no
+ícone da **bandeja** do Windows (onde ficam os programas em segundo plano) e nas janelas. O ícone do executável instalado
+é o colorido (`app/assets/icon.ico`).
+
 ## Modelo local (Ollama)
 
 Em Configurações > Modelo de IA, escolha **Local** para usar o [Ollama](https://ollama.com) neste computador: nada do seu

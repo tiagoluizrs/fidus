@@ -19,7 +19,7 @@ if (!app.requestSingleInstanceLock()) {
   let snapshot: Snapshot | null = null;
   const bridge = new BridgeClient();
   const dirs = resolveDirs(app.getAppPath());
-  const windows = new Windows(dirs.renderer, dirs.preload);
+  const windows = new Windows(dirs.renderer, dirs.preload, dirs.assets);
   const lifecycle = new RingLifecycle(
     () => {
       windows.openRing();
@@ -144,6 +144,8 @@ if (!app.requestSingleInstanceLock()) {
       const plan = planAppSettings(eff);
       if (!process.env.FIDUS_THEME) nativeTheme.themeSource = plan.themeSource;
       tray?.setVisible(plan.trayVisible);
+      tray?.setIcon(plan.icon);
+      windows.setIcon(plan.icon);
       lifecycle.setIdleMs(process.env.FIDUS_RING_IDLE_MS ? IDLE_CLOSE_MS : plan.idleMs);
       if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: plan.openAtLogin });
     };

@@ -151,6 +151,7 @@ class AppConfig:
     language: str = "pt-BR"
     start_with_windows: bool = False
     tray_icon: bool = True
+    icon: str = "colorido"  # ícone do app na bandeja e nas janelas: escuro | claro | colorido
     ring_idle_s: int = 6
 
 
@@ -281,6 +282,7 @@ def _apply_extras(cfg: Config, data: dict) -> None:
     ac2.language = str(ap.get("idioma", ac2.language))
     ac2.start_with_windows = bool(ap.get("iniciar_com_windows", ac2.start_with_windows))
     ac2.tray_icon = bool(ap.get("icone_bandeja", ac2.tray_icon))
+    ac2.icon = ap.get("icone", ac2.icon) if ap.get("icone", ac2.icon) in ("escuro", "claro", "colorido") else ac2.icon
     ac2.ring_idle_s = int(ap.get("janela_inatividade_s", ac2.ring_idle_s))
     mo = data.get("modelo", {})
     if mo.get("claude") and "CLAUDE_MODEL" not in os.environ:  # a variável de ambiente continua mandando

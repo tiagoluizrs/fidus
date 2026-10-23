@@ -203,7 +203,11 @@ export interface AppPlan {
   openAtLogin: boolean;
   trayVisible: boolean;
   idleMs: number;
+  icon: AppIcon;
 }
+
+export type AppIcon = "escuro" | "claro" | "colorido";
+export const APP_ICONS: AppIcon[] = ["escuro", "claro", "colorido"];
 
 /** Converte os valores em vigor (`effective` do núcleo) no que o Electron aplica na hora. */
 export function planAppSettings(eff: Record<string, unknown>): AppPlan {
@@ -214,6 +218,7 @@ export function planAppSettings(eff: Record<string, unknown>): AppPlan {
     openAtLogin: eff["app.iniciar_com_windows"] === true,
     trayVisible: eff["app.icone_bandeja"] !== false,
     idleMs: Number.isFinite(idle) && idle >= 3 && idle <= 60 ? idle * 1000 : 6000,
+    icon: APP_ICONS.includes(eff["app.icone"] as AppIcon) ? (eff["app.icone"] as AppIcon) : "colorido",
   };
 }
 

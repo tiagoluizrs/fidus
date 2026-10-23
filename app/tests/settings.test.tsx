@@ -37,7 +37,9 @@ describe("funções puras", () => {
   });
   it("planAppSettings", () => {
     expect(planAppSettings({ "app.tema": "escuro", "app.iniciar_com_windows": true, "app.icone_bandeja": false, "app.janela_inatividade_s": 10 }))
-      .toEqual({ themeSource: "dark", openAtLogin: true, trayVisible: false, idleMs: 10000 });
+      .toEqual({ themeSource: "dark", openAtLogin: true, trayVisible: false, idleMs: 10000, icon: "colorido" });
+    expect(planAppSettings({ "app.icone": "escuro" }).icon).toBe("escuro");
+    expect(planAppSettings({ "app.icone": "../../x" }).icon).toBe("colorido"); // valor estranho cai no padrão
     expect(planAppSettings({ "app.janela_inatividade_s": 999 }).idleMs).toBe(6000);
     expect(planAppSettings({}).themeSource).toBe("system");
   });
@@ -293,5 +295,19 @@ describe("Baixar modelo do Ollama pelo painel", () => {
     f.emit({ type: "model_pull", what: "x:1b", state: "error", message: "O modelo 'x:1b' não existe no catálogo do Ollama." });
     expect(await screen.findByText(/não existe no catálogo/)).toBeInTheDocument();
     expect(f.effective["modelo.local"]).toBe("qwen3:8b");
+  });
+});
+
+describe("Ícone do app", () => {
+  it("mostra as três artes e grava a escolhida", async () => {
+    const f = installFakeCore();
+    const user = await open("Geral");
+    const grupo = await screen.findByRole("radiogroup", { name: "Ícone do app" });
+    const opcoes = within(grupo).getAllByRole("radio");
+    expect(opcoes.map((o) => o.textContent?.match(/Escuro|Claro|Colorido/)?.[0])).toEqual(["Escuro", "Claro", "Colorido"]);
+    expect(within(grupo).getByRole("radio", { name: /Colorido/ })).toHaveAttribute("aria-checked", "true");
+    await user.click(within(grupo).getByRole("radio", { name: /Escuro/ }));
+    await waitFor(() => expect(f.effective["app.icone"]).toBe("escuro"));
+    expect(within(grupo).getByRole("radio", { name: /Escuro/ })).toHaveAttribute("aria-checked", "true");
   });
 });
