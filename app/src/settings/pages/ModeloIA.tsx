@@ -8,16 +8,23 @@ export const isSmallModel = (name: string): boolean => /(^|[:\-_ ])(0\.\d+|1|1\.
 interface LocalModels { running: boolean; models: string[]; suggested: string; url: string; busy?: boolean }
 
 export function ModeloIA() {
-  const { eff, save, call, claudeModels, notify, subscribe } = useCore();
+  const { eff, save, call, claudeModels, geminiModels, notify, subscribe } = useCore();
   const [pullName, setPullName] = useState("");
   const [pull, setPull] = useState<{ what: string; pct: number } | null>(null);
   const [key, setKey] = useState<{ stored: boolean; source: string } | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [gkey, setGkey] = useState<{ stored: boolean; source: string } | null>(null);
+  const [editing, setEditing] = useState<"claude" | "gemini" | null>(null);
   const [value, setValue] = useState("");
-  useEffect(() => void call<{ stored: boolean; source: string }>("api_key", {}, { quiet: true }).then(setKey), [call]);
+  useEffect(() => {
+    void call<{ stored: boolean; source: string }>("api_key", {}, { quiet: true }).then(setKey);
+    void call<{ stored: boolean; source: string }>("api_key", { provider: "gemini" }, { quiet: true }).then(setGkey);
+  }, [call]);
   const model = String(eff["modelo.claude"] ?? "claude-sonnet-5-5");
   const known = claudeModels.includes(model);
-  const local = eff["modelo.provedor"] === "local";
+  const provider = String(eff["modelo.provedor"] ?? "claude");
+  const local = provider === "local";
+  const gemini = provider === "gemini";
+  const gModel = String(eff["modelo.gemini"] ?? "gemini-2.5-flash");
   const localModel = String(eff["modelo.local"] ?? "qwen3:8b");
   const ack = eff["modelo.local_acoes_ciente"] === true;
   const [ollama, setOllama] = useState<LocalModels | null>(null);
@@ -39,11 +46,12 @@ export function ModeloIA() {
   };
 
   const submit = async () => {
-    const r = await call<{ stored: boolean; source: string }>("api_key", { op: "set", value });
+    const target = editing ?? "claude";
+    const r = await call<{ stored: boolean; source: string }>("api_key", { op: "set", value, provider: target });
     setValue("");
     if (r) {
-      setKey(r);
-      setEditing(false);
+      (target === "gemini" ? setGkey : setKey)(r);
+      setEditing(null);
       notify("ok", "Chave guardada no cofre do sistema.");
     }
   };
@@ -52,14 +60,34 @@ export function ModeloIA() {
     <Page title="Modelo de IA" subtitle="Escolha quem pensa por trás do personagem e veja para onde cada dado vai.">
       <Section title="Provedor" subtitle="Troque quando quiser; a memória e o personagem continuam os mesmos.">
         <div className="engines" role="radiogroup" aria-label="Provedor">
-          <button type="button" role="radio" aria-checked={!local} className={`engine${local ? "" : " on"}`} onClick={() => void save({ "modelo.provedor": "claude" })}>
+          <button type="button" role="radio" aria-checked={provider === "claude"} className={`engine${provider === "claude" ? " on" : ""}`} onClick={() => void save({ "modelo.provedor": "claude" })}>
             <strong>Claude</strong><span className="muted small">Anthropic · Padrão. Melhor para pedidos com várias etapas e ferramentas.</span><Badge>Nuvem</Badge>
+          </button>
+          <button type="button" role="radio" aria-checked={gemini} className={`engine${gemini ? " on" : ""}`} onClick={() => void save({ "modelo.provedor": "gemini" })}>
+            <strong>Gemini</strong><span className="muted small">Google · Tem plano grátis (com limites). No grátis, o Google pode usar o que você enviar.</span><Badge>Nuvem</Badge>
           </button>
           <button type="button" role="radio" aria-checked={local} className={`engine${local ? " on" : ""}`} onClick={() => void save({ "modelo.provedor": "local" })}>
             <strong>Local</strong><span className="muted small">Ollama · Nada sai da máquina. Mais limitado: por padrão só lê e responde.</span><Badge tone="ok">Neste computador</Badge>
           </button>
         </div>
-        {!local && (
+        {gemini && (
+          <>
+            <Row label="Modelo" htmlFor="gemini-model" hint="O gemini-2.5-flash é o mais equilibrado. O 2.5-pro pensa melhor, mas tem limite menor no plano grátis.">
+              <select id="gemini-model" value={gModel} onChange={(e) => save({ "modelo.gemini": e.target.value })}>
+                {!geminiModels.includes(gModel) && <option value={gModel}>{gModel}</option>}
+                {geminiModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </Row>
+            <Row label="Chave do Gemini" hint="Crie grátis em aistudio.google.com > Get API key. A chave começa com AIza.">
+              <span className="inline">
+                <Badge tone={gkey?.stored ? "ok" : "neutral"}>{gkey?.stored ? "Guardada no cofre do sistema" : "Não definida"}</Badge>
+                <Button onClick={() => setEditing("gemini")}>{gkey?.stored ? "Alterar" : "Definir"}</Button>
+              </span>
+            </Row>
+            <p className="notice" role="note"><strong>Antes de usar o plano grátis:</strong> segundo o Google, no plano grátis o conteúdo que você envia (pedidos e trechos de e-mails, agenda e mensagens) <strong>pode ser usado para melhorar os produtos deles</strong>, inclusive com revisão humana. Se isso não serve para você, use o Claude, um plano pago do Gemini ou o modelo Local.</p>
+          </>
+        )}
+        {provider === "claude" && (
           <>
             <Row label="Modelo" htmlFor="model" hint="Teste o claude-haiku-5-5 nos pedidos simples: costuma ser mais rápido e barato.">
               <select id="model" value={model} onChange={(e) => save({ "modelo.claude": e.target.value })}>
@@ -70,7 +98,7 @@ export function ModeloIA() {
             <Row label="Chave da API" hint={key?.source === "ambiente" ? "Vem do arquivo .env (só desenvolvimento). Guarde no cofre." : undefined}>
               <span className="inline">
                 <Badge tone={key?.stored ? "ok" : "neutral"}>{key?.stored ? "Guardada no cofre do sistema" : key?.source === "ambiente" ? "No ambiente (.env)" : "Não definida"}</Badge>
-                <Button onClick={() => setEditing(true)}>{key?.stored ? "Alterar" : "Definir"}</Button>
+                <Button onClick={() => setEditing("claude")}>{key?.stored ? "Alterar" : "Definir"}</Button>
               </span>
             </Row>
           </>
@@ -131,7 +159,7 @@ export function ModeloIA() {
         <Row label="Sua voz e a transcrição"><Badge tone="ok">Neste computador</Badge></Row>
         <Row label="Memória e histórico"><Badge tone="ok">Neste computador</Badge></Row>
         <Row label="Chaves e tokens das contas"><Badge tone="ok">Cofre do sistema</Badge></Row>
-        <Row label="Seu pedido e trechos necessários">{local ? <Badge tone="ok">Ollama · Neste computador</Badge> : <Badge>Claude · Nuvem</Badge>}</Row>
+        <Row label="Seu pedido e trechos necessários">{local ? <Badge tone="ok">Ollama · Neste computador</Badge> : gemini ? <Badge>Gemini · Nuvem (Google)</Badge> : <Badge>Claude · Nuvem</Badge>}</Row>
       </Section>
 
       <Section title="Segurança das ações" subtitle="Valem para todos os personagens.">
@@ -149,15 +177,15 @@ export function ModeloIA() {
         </Row>
       </Section>
 
-      {editing && (
-        <Dialog title="Chave da API da Anthropic" onClose={() => { setEditing(false); setValue(""); }}>
+      {editing !== null && (
+        <Dialog title={editing === "gemini" ? "Chave do Gemini" : "Chave da API da Anthropic"} onClose={() => { setEditing(null); setValue(""); }}>
           <p className="muted">A chave é guardada no Gerenciador de Credenciais do Windows e nunca é mostrada de novo.</p>
           <div className="field">
-            <label htmlFor="api-key" className="row-label">Chave (começa com sk-ant-)</label>
+            <label htmlFor="api-key" className="row-label">{editing === "gemini" ? "Chave (começa com AIza)" : "Chave (começa com sk-ant-)"}</label>
             <input id="api-key" type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />
           </div>
           <div className="dialog-actions">
-            <Button onClick={() => { setEditing(false); setValue(""); }}>Cancelar</Button>
+            <Button onClick={() => { setEditing(null); setValue(""); }}>Cancelar</Button>
             <Button variant="primary" disabled={value.trim().length < 10} onClick={() => void submit()}>Guardar</Button>
           </div>
         </Dialog>

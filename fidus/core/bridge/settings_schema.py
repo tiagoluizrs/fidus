@@ -19,6 +19,7 @@ class Rule:
 
 
 CLAUDE_MODELS = ("claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5")
+GEMINI_MODELS = ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite")  # todos têm plano grátis (com limites)
 
 SCHEMA: dict[str, Rule] = {
     # --- Geral / aparência (a interface aplica) ---
@@ -52,7 +53,8 @@ SCHEMA: dict[str, Rule] = {
     "personagens.falar_inicio": Rule("bool"),
     "personagens.falar_despedida": Rule("bool"),
     # --- Modelo de IA ---
-    "modelo.provedor": Rule("choice", choices=("claude", "local")),
+    "modelo.provedor": Rule("choice", choices=("claude", "gemini", "local")),
+    "modelo.gemini": Rule("str", max_len=80),
     "modelo.claude": Rule("str", max_len=80),
     "modelo.local": Rule("str", max_len=100),  # nome do modelo no Ollama (ex.: qwen3:8b)
     "modelo.local_url": Rule("str", max_len=100),  # só endereços da própria máquina
@@ -128,6 +130,8 @@ def extra_check(key: str, value: Any) -> Any:
             raise InvalidSetting(f"{key}: {e}") from e
     elif key == "modelo.claude" and not re.fullmatch(r"claude-[a-z0-9][a-z0-9.\-]{2,70}", value):
         raise InvalidSetting("modelo.claude: use um nome de modelo como claude-sonnet-5-5")
+    elif key == "modelo.gemini" and not re.fullmatch(r"gemini-[a-z0-9][a-z0-9.\-]{2,60}", value):
+        raise InvalidSetting("modelo.gemini: use um nome como gemini-2.5-flash")
     elif key == "modelo.local" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/\-]{0,98}", value):
         raise InvalidSetting("modelo.local: use um nome do Ollama como qwen3:8b")
     elif key == "modelo.local_url":
@@ -163,7 +167,7 @@ def effective(config) -> dict[str, Any]:
         "voz.responder_em_voz": v.speak_replies, "voz.tempo_confirmacao_s": v.confirm_timeout_s,
         "usuario.nome": config.user.name, "usuario.sobrenome": config.user.surname, "usuario.genero": config.user.gender,
         "personagens.falar_inicio": c.speak_start, "personagens.falar_despedida": c.speak_farewell,
-        "modelo.provedor": config.provider, "modelo.claude": config.model, "modelo.local": config.local_model,
+        "modelo.provedor": config.provider, "modelo.claude": config.model, "modelo.gemini": config.gemini_model, "modelo.local": config.local_model,
         "modelo.local_url": config.local_url, "modelo.local_acoes": config.local_actions,
         "modelo.local_acoes_ciente": config.local_actions_ack, "geral.max_chamadas_ferramenta": config.max_tool_calls,
         "memoria.perguntar_antes_de_guardar": m.ask_before_saving, "memoria.aprender": m.learn,

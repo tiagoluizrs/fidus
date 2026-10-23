@@ -329,3 +329,24 @@ def test_chamada_invalida_nunca_mostra_json_cru(fake):
     got: list[str] = []
     r = OllamaProvider("m", f.url).complete_stream("s", [Message("user", text="x")], [AGENDA], got.append)
     assert not r.tool_calls and "inválida" in r.text and "{" not in r.text and "".join(got) == r.text
+
+
+# ---- modelos que "pensam" (qwen3) ----
+
+
+def test_raciocinio_think_nunca_chega_a_tela_mesmo_em_pedacos(fake):
+    from fidus.core.providers.ollama import ThinkFilter
+
+    f = fake(replies=[[chunk("<thi"), chunk("nk>vou pensar</th"), chunk("ink>\nOlá"), chunk(", tudo bem!", done=True)]])
+    got: list[str] = []
+    r = OllamaProvider("qwen3:8b", f.url).complete_stream("s", [Message("user", text="oi")], [], got.append)
+    assert r.text == "Olá, tudo bem!" and "".join(got) == "Olá, tudo bem!"
+    t = ThinkFilter()
+    assert t.feed("a<b") + t.feed("> c") + t.flush() == "a<b> c"  # "<" solto não some
+
+
+def test_qwen3_vai_sem_raciocinio_e_outros_modelos_nao_recebem_a_opcao(fake):
+    f = fake(replies=[[chunk("ok", done=True)], [chunk("ok", done=True)]])
+    OllamaProvider("qwen3:8b", f.url).complete("s", [Message("user", text="x")], [])
+    OllamaProvider("llama3.1:8b", f.url).complete("s", [Message("user", text="x")], [])
+    assert f.requests[0]["think"] is False and "think" not in f.requests[1]

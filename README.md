@@ -544,6 +544,17 @@ Em **Configurações > Geral > Ícone do app** a pessoa escolhe a arte (escuro, 
 ícone da **bandeja** do Windows (onde ficam os programas em segundo plano) e nas janelas. O ícone do executável instalado
 é o colorido (`app/assets/icon.ico`).
 
+## Gemini (Google)
+
+Em Configurações > Modelo de IA, escolha **Gemini** para usar a API do Google, que tem **plano grátis** (com limites por minuto
+e por dia). Crie a chave em [aistudio.google.com](https://aistudio.google.com) > *Get API key* e cole na tela (começa com
+`AIza`; vai para o cofre do Windows). Modelos: `gemini-2.5-flash` (padrão), `gemini-2.5-pro`, `gemini-2.5-flash-lite`.
+
+- **Privacidade no plano grátis:** segundo o Google, no plano grátis o conteúdo enviado pode ser usado para melhorar os produtos
+  dele. A tela avisa isso. Para e-mails e mensagens sensíveis, prefira o Claude, o Gemini pago ou o modelo Local.
+- Funciona com as mesmas permissões e confirmações dos outros provedores (a regra fica fora do modelo).
+- Sem dependência nova (HTTP direto). Não testado com uma chave real nesta sessão: os testes usam um servidor falso.
+
 ## Modelo local (Ollama)
 
 Em Configurações > Modelo de IA, escolha **Local** para usar o [Ollama](https://ollama.com) neste computador: nada do seu

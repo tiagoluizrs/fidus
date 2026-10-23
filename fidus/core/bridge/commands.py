@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .. import settings as settings_io
-from .settings_schema import CLAUDE_MODELS, RESTART_REQUIRED, SCHEMA, InvalidSetting, effective, validate_all
+from .settings_schema import CLAUDE_MODELS, GEMINI_MODELS, RESTART_REQUIRED, SCHEMA, InvalidSetting, effective, validate_all
 
 
 class CoreCommands:
@@ -68,7 +68,7 @@ class CoreCommands:
     def cmd_get_settings(self):
         return {
             "settings": settings_io.read(self.config.settings_path), "effective": effective(self.config), "schema": sorted(SCHEMA),
-            "claude_models": list(CLAUDE_MODELS), "restart_required": sorted(RESTART_REQUIRED),
+            "claude_models": list(CLAUDE_MODELS), "gemini_models": list(GEMINI_MODELS), "restart_required": sorted(RESTART_REQUIRED),
         }
 
     def cmd_set_settings(self, patch: dict):
@@ -143,9 +143,9 @@ class CoreCommands:
     def cmd_devices(self):
         return self.h.devices()
 
-    def cmd_api_key(self, op: str = "status", value: str = ""):
+    def cmd_api_key(self, op: str = "status", value: str = "", provider: str = "claude"):
         self.h.loop = self.loop
-        return self.h.api_key(op, value)
+        return self.h.api_key(op, value, provider)
 
     def cmd_piper(self, op: str = "status", voice: str = ""):
         self.h.loop = self.loop

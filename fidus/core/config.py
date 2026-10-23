@@ -158,7 +158,8 @@ class AppConfig:
 @dataclass
 class Config:
     model: str = DEFAULT_MODEL
-    provider: str = "claude"  # claude | local (Ollama)
+    provider: str = "claude"  # claude | gemini | local (Ollama)
+    gemini_model: str = "gemini-2.5-flash"
     local_model: str = DEFAULT_LOCAL_MODEL
     local_url: str = "http://127.0.0.1:11434"
     local_actions: bool = False  # liberar ações de escrita com o modelo local (precisa também da ciência dos riscos)
@@ -288,6 +289,7 @@ def _apply_extras(cfg: Config, data: dict) -> None:
     if mo.get("claude") and "CLAUDE_MODEL" not in os.environ:  # a variável de ambiente continua mandando
         cfg.model = str(mo["claude"])
     cfg.provider = str(mo.get("provedor", cfg.provider))
+    cfg.gemini_model = str(mo.get("gemini", cfg.gemini_model))
     cfg.local_model = str(mo.get("local", cfg.local_model))
     cfg.local_url = str(mo.get("local_url", cfg.local_url))
     cfg.local_actions = bool(mo.get("local_acoes", cfg.local_actions))
@@ -376,6 +378,6 @@ def apply_live(dst: Config, src: Config) -> None:
         if w.id in fresh:
             w.threshold = fresh[w.id].threshold
     dst.max_tool_calls, dst.model, dst.sensitivity = src.max_tool_calls, src.model, src.sensitivity
-    for name in ("provider", "local_model", "local_url", "local_actions", "local_actions_ack"):
+    for name in ("provider", "gemini_model", "local_model", "local_url", "local_actions", "local_actions_ack"):
         setattr(dst, name, getattr(src, name))
     dst.allowed_folders, dst.allowed_apps = src.allowed_folders, src.allowed_apps

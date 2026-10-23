@@ -339,3 +339,18 @@ describe("modelos pequenos", () => {
     expect(await screen.findByText(/é pequeno e costuma responder mal/)).toBeInTheDocument();
   });
 });
+
+describe("Gemini", () => {
+  it("escolher o Gemini mostra o modelo, o aviso do plano grátis e guarda a chave", async () => {
+    const f = installFakeCore();
+    const user = await open("Modelo de IA");
+    await user.click(await screen.findByRole("radio", { name: /Gemini/ }));
+    await waitFor(() => expect(f.effective["modelo.provedor"]).toBe("gemini"));
+    expect(await screen.findByText(/pode ser usado para melhorar os produtos deles/)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "gemini-2.5-flash" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Definir" }));
+    await user.type(screen.getByLabelText(/começa com AIza/), "AIza" + "k".repeat(35));
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(sent(f.calls, "api_key", "set")[0][1]).toMatchObject({ provider: "gemini" }));
+  });
+});

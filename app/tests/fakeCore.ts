@@ -29,7 +29,7 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
     "voz.atalho_ativo": true, "voz.microfone": "", "voz.modelo_whisper": "small", "voz.velocidade_voz": 0, "voz.responder_em_voz": true,
     "usuario.nome": "", "usuario.sobrenome": "", "memoria.aprender": true, "memoria.perguntar_antes_de_guardar": false,
     "privacidade.registrar_acoes": true, "privacidade.guardar_log_dias": 30, "privacidade.guardar_historico": true,
-    "privacidade.avisar_microfone": true, "modelo.provedor": "claude", "modelo.claude": "claude-sonnet-5-5", "modelo.local": "qwen3:8b", "modelo.local_acoes": false, "modelo.local_acoes_ciente": false, "arquivos.pastas_liberadas": [], ...init.effective,
+    "privacidade.avisar_microfone": true, "modelo.provedor": "claude", "modelo.claude": "claude-sonnet-5-5", "modelo.gemini": "gemini-2.5-flash", "modelo.local": "qwen3:8b", "modelo.local_acoes": false, "modelo.local_acoes_ciente": false, "arquivos.pastas_liberadas": [], ...init.effective,
   };
   const piper: Obj = { supported: true, installed: false, download_mb: 22, busy: false, voices: [
     { id: "pt_BR-faber-medium", label: "Faber", size_mb: 63, installed: false }, { id: "pt_BR-cadu-medium", label: "Cadu", size_mb: 63, installed: false }] };
@@ -40,6 +40,7 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
   let nextMem = 1;
   let calls_state = { enabled: true, until: null as number | null };
   let key = { stored: true, source: "cofre" };
+  let gkey = { stored: false, source: "nenhuma" };
   let googleCredentials = true;
   let services: Obj[] = init.services ?? [
     { id: "gmail", kind: "email", name: "Gmail", connected: true, write: false, write_label: "criar rascunhos" },
@@ -84,7 +85,7 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
 
   function handle(name: string, a: Obj): Reply {
     switch (name) {
-      case "get_settings": return ok({ settings: {}, effective, schema: Object.keys(effective), claude_models: ["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"], restart_required: [] });
+      case "get_settings": return ok({ settings: {}, effective, schema: Object.keys(effective), claude_models: ["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"], gemini_models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"], restart_required: [] });
       case "set_settings": {
         for (const [k, v] of Object.entries<any>(a.patch)) {
           if (k === "voz.velocidade_voz" && (v < -10 || v > 10)) return fail("voz.velocidade_voz: valor fora do intervalo -10 a 10");
@@ -119,6 +120,7 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
       case "voices": return ok({ engine: "sapi", voices: ["Microsoft Maria", "Microsoft Daniel"] });
       case "devices": return ok({ devices: [{ index: 1, name: "Microfone (Realtek)", default: true }, { index: 4, name: "Headset USB", default: false }] });
       case "api_key":
+        if (a.provider === "gemini") { if (a.op === "set") gkey = { stored: true, source: "cofre" }; return ok(gkey); }
         if (a.op === "set") { if (!String(a.value).startsWith("sk-ant-")) return fail("Isso não parece uma chave da Anthropic (começa com sk-ant-)."); key = { stored: true, source: "cofre" }; }
         return ok(key);
       case "memory": {
