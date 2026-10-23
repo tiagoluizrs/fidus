@@ -47,6 +47,13 @@ describe("modelo da interface", () => {
     expect(modelLabel(m.character, m.model)).toBe("Donna · Local · Local");
   });
 
+  it("erro do núcleo aparece e some na próxima fala do usuário", () => {
+    let m = reduce(initialModel, { type: "caption", role: "user", text: "oi", final: true });
+    m = reduce(m, { type: "error", message: "OllamaError: Ollama fechado" });
+    expect(m.error).toBe("OllamaError: Ollama fechado");
+    expect(reduce(m, { type: "caption", role: "user", text: "de novo", final: true }).error).toBe("");
+  });
+
   it("confirmação pendente: aparece e some só com o id certo", () => {
     let m = run([{ type: "confirm", id: "a", text: "Abrir o regedit?" }]);
     expect(m.confirm).toEqual({ id: "a", text: "Abrir o regedit?" });

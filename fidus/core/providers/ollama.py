@@ -86,7 +86,7 @@ class OllamaProvider:
             raise OllamaError(_friendly(_http_error_text(e), self.model)) from e
         except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
             raise OllamaError(
-                f"Não consegui falar com o Ollama em {self.url}. Ele está aberto? (Abra o app do Ollama ou rode `ollama serve`.)"
+                f"Não consegui falar com o Ollama em {self.url}. Ele está aberto? (Abra o app do Ollama ou rode `ollama serve`; se o Fidus roda no Docker, abra o Ollama com OLLAMA_HOST=0.0.0.0.)"
             ) from e
         return Response(text="".join(text), tool_calls=calls)
 
