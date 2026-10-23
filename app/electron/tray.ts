@@ -8,6 +8,7 @@ import type { Snapshot } from "../src/shared/protocol";
 export class AppTray {
   private tray: Tray | null = null;
   private last: Snapshot | null = null;
+  private problem: string | null = null;
   private variant: AppIcon = "colorido";
 
   constructor(private assets: string, private handlers: TrayHandlers) {
@@ -25,7 +26,7 @@ export class AppTray {
     if (visible && !this.tray) {
       this.tray = new Tray(this.icon());
       this.tray.on("click", () => this.tray?.popUpContextMenu());
-      this.update(this.last);
+      this.update(this.last, this.problem);
     } else if (!visible && this.tray) {
       this.tray.destroy();
       this.tray = null;
@@ -37,10 +38,11 @@ export class AppTray {
     return nativeImage.createFromPath(path.join(this.assets, `tray-${this.variant}.png`));
   }
 
-  update(snapshot: Snapshot | null): void {
+  update(snapshot: Snapshot | null, problem: string | null = this.problem): void {
     this.last = snapshot;
+    this.problem = problem;
     if (!this.tray) return;
-    const template = buildTrayTemplate(snapshot, this.handlers) as MenuItem[];
+    const template = buildTrayTemplate(snapshot, this.handlers, Date.now(), problem) as MenuItem[];
     this.tray.setContextMenu(Menu.buildFromTemplate(template as Electron.MenuItemConstructorOptions[]));
     this.tray.setToolTip(template[0].label ?? "Fidus");
   }

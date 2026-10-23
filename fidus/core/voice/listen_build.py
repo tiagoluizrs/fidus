@@ -51,12 +51,13 @@ def build_listen_loop(config: Config, include_test: bool = False, events=None, b
     persona_ref: dict = {}
     if detector is None and wake.mode in ("auto", "voz"):
         # sem modelo treinado (ou por escolha): percebe o "ei Alfred" pela fala, com VAD + Whisper local
+        from ..characters.store import CharacterStore
         from .speech_wake import SpeechWakeRunner
 
         runner = SpeechWakeRunner(
             manager, load_vad(wake.vad_threshold), stt,
             lambda: {c: persona_ref["p"].ui_profile(c)["name"] for c in persona_ref["p"].ids()},
-            {**{c: WakeWord(f"ei_{c}", "", c) for c in persona_ref["p"].ids()}, **{w.character: w for w in wake.words}}, lambda act: loop_ref["loop"].on_activation(act),
+            {**{c: WakeWord(f"ei_{c}", "", c) for c in CharacterStore(config.characters_dir).ids()}, **{w.character: w for w in wake.words}}, lambda act: loop_ref["loop"].on_activation(act),
             silence_s=0.8,
         )
         print("Chamado por reconhecimento de fala: diga o nome do personagem (ex.: “ei Alfred, que horas são?”).")
