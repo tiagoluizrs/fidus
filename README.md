@@ -114,7 +114,7 @@ Imports pesados (`anthropic`, Google, `keyring`, `faster-whisper`, `sounddevice`
 
 ## O que foi validado e o que falta validar no Windows
 
-Desenvolvido e testado em Linux (233 testes passando; o teste da chave da API pula sem `ANTHROPIC_API_KEY`). **Precisa ser validado no Windows:**
+Desenvolvido e testado em Linux (270 testes passando; o teste da chave da API pula sem `ANTHROPIC_API_KEY`). **Precisa ser validado no Windows:**
 
 - [ ] `abrir_app`: o lançamento real (`os.startfile`) é mockado nos testes. Conferir `abre o bloco de notas` e `abre a calculadora`.
 - [ ] `keyring` no Gerenciador de Credenciais do Windows (os testes usam um módulo falso).
