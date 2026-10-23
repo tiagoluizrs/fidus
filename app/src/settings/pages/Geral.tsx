@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useCore } from "../core";
 import { humanize, comboFromEvent } from "../hotkey";
+import iconeEscuro from "../../../assets/logo/fidus-icone-escuro.svg";
+import iconeClaro from "../../../assets/logo/fidus-icone-claro.svg";
+import iconeColorido from "../../../assets/logo/fidus-icone-colorido.svg";
 import { Badge, Button, Page, Row, Section, Segmented, Switch, TextField } from "../ui";
 
 export function HotkeyField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -27,6 +30,12 @@ export function HotkeyField({ value, onChange }: { value: string; onChange: (v: 
   );
 }
 
+const ICONS = [
+  { id: "escuro", label: "Escuro", text: "Fundo preto com o símbolo em degradê.", src: iconeEscuro },
+  { id: "claro", label: "Claro", text: "Fundo branco com o símbolo em degradê.", src: iconeClaro },
+  { id: "colorido", label: "Colorido", text: "Fundo em degradê com o símbolo branco.", src: iconeColorido },
+];
+
 export function Geral() {
   const { eff, save, characters, calls, setCalls, restartNeeded } = useCore();
   const s = (k: string) => eff[k] as never;
@@ -40,6 +49,20 @@ export function Geral() {
         <Row label="Idioma" hint="Outros idiomas chegam em uma próxima versão.">
           <select aria-label="Idioma" value="pt-BR" disabled><option>Português (Brasil)</option></select>
         </Row>
+      </Section>
+
+      <Section title="Ícone do app" subtitle="Aparece na bandeja do Windows (perto do relógio, onde ficam os programas em segundo plano) e na barra de tarefas.">
+        <div className="icon-choices" role="radiogroup" aria-label="Ícone do app">
+          {ICONS.map((i) => (
+            <button key={i.id} type="button" role="radio" aria-checked={(s("app.icone") ?? "colorido") === i.id} className={`icon-choice${(s("app.icone") ?? "colorido") === i.id ? " on" : ""}`} onClick={() => void save({ "app.icone": i.id })}>
+              <img src={i.src} width={72} height={72} alt="" />
+              <strong>{i.label}</strong>
+              <span className="muted small">{i.text}</span>
+              <span className="tray-preview" aria-hidden="true"><img src={i.src} width={16} height={16} alt="" /><img src={i.src} width={24} height={24} alt="" /><img src={i.src} width={32} height={32} alt="" /></span>
+            </button>
+          ))}
+        </div>
+        <p className="muted small">A prévia pequena mostra como fica na bandeja (16, 24 e 32 px). A mudança vale na hora.</p>
       </Section>
 
       <Section title="Chamar um personagem" subtitle="Cada um atende pelo próprio nome.">

@@ -24,7 +24,7 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
   const profiles: Record<string, Obj> = { alfred: makeProfile("alfred"), donna: makeProfile("donna"), jarbis: makeProfile("jarbis") };
   const deletedStash: Record<string, Obj[]> = {};
   const effective: Obj = {
-    "app.tema": "sistema", "app.iniciar_com_windows": false, "app.icone_bandeja": true, "app.janela_inatividade_s": 6,
+    "app.tema": "sistema", "app.iniciar_com_windows": false, "app.icone_bandeja": true, "app.icone": "colorido", "app.janela_inatividade_s": 6,
     "chamados.sensibilidade": 60, "chamados.esperar_fala_s": 5, "chamados.som_ao_ouvir": false, "voz.atalho": "ctrl+alt+space",
     "voz.atalho_ativo": true, "voz.microfone": "", "voz.modelo_whisper": "small", "voz.velocidade_voz": 0, "voz.responder_em_voz": true,
     "usuario.nome": "", "usuario.sobrenome": "", "memoria.aprender": true, "memoria.perguntar_antes_de_guardar": false,

@@ -1,4 +1,4 @@
-import { BrowserWindow, nativeTheme } from "electron";
+import { BrowserWindow, nativeImage, nativeTheme } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { lockDown, webPreferences } from "./security";
@@ -9,7 +9,16 @@ export class Windows {
   private closingRing = false;
   onRingClosedExternally: () => void = () => {};
 
-  constructor(private rendererDir: string, private preload: string) {}
+  private icon: Electron.NativeImage | undefined;
+
+  constructor(private rendererDir: string, private preload: string, private assets?: string) {}
+
+  /** Ícone das janelas (barra de tarefas): a mesma arte escolhida para a bandeja. */
+  setIcon(variant: string): void {
+    if (!this.assets) return;
+    this.icon = nativeImage.createFromPath(path.join(this.assets, "logo", "png", `fidus-icone-${variant}-256.png`));
+    for (const w of [this.ring, this.settings]) w?.setIcon(this.icon);
+  }
 
   get rendererUrl(): string {
     return pathToFileURL(this.rendererDir).href + "/";
@@ -66,7 +75,7 @@ export class Windows {
     }
     const win = new BrowserWindow({
       width: Number(process.env.FIDUS_SETTINGS_W) || 1100, height: Number(process.env.FIDUS_SETTINGS_H) || 760, minWidth: 900, minHeight: 600, show: false, autoHideMenuBar: true,
-      backgroundColor: this.bg(), title: "Fidus · Configurações", webPreferences: webPreferences(this.preload),
+      backgroundColor: this.bg(), title: "Fidus · Configurações", ...(this.icon ? { icon: this.icon } : {}), webPreferences: webPreferences(this.preload),
     });
     this.settings = win;
     lockDown(win);

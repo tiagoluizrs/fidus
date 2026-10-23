@@ -26,6 +26,7 @@ SCHEMA: dict[str, Rule] = {
     "app.idioma": Rule("choice", choices=("pt-BR",)),
     "app.iniciar_com_windows": Rule("bool"),
     "app.icone_bandeja": Rule("bool"),
+    "app.icone": Rule("choice", choices=("escuro", "claro", "colorido")),  # arte do ícone na bandeja e nas janelas
     "app.janela_inatividade_s": Rule("int", 3, 60),
     # --- Chamados ---
     "chamados.personagem_padrao": Rule("choice", choices=("alfred", "donna", "jarbis")),
@@ -152,7 +153,7 @@ def effective(config) -> dict[str, Any]:
     w, v, m, p, a, c = config.wake, config.voice, config.memory, config.privacy, config.app, config.characters
     return {
         "app.tema": a.theme, "app.idioma": a.language, "app.iniciar_com_windows": a.start_with_windows,
-        "app.icone_bandeja": a.tray_icon, "app.janela_inatividade_s": a.ring_idle_s,
+        "app.icone_bandeja": a.tray_icon, "app.icone": a.icon, "app.janela_inatividade_s": a.ring_idle_s,
         "chamados.personagem_padrao": w.default_character, "chamados.som_ao_ouvir": w.beep,
         "chamados.sensibilidade": config.sensitivity if config.sensitivity is not None else 60,
         "chamados.esperar_fala_s": w.wait_speech_s, "chamados.silencio_fim_s": w.silence_s,

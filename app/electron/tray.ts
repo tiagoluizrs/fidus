@@ -1,16 +1,23 @@
-import { Menu, Tray, nativeImage, nativeTheme } from "electron";
+import { Menu, Tray, nativeImage } from "electron";
 import path from "node:path";
 import { buildTrayTemplate } from "./logic";
+import type { AppIcon } from "./logic";
 import type { MenuItem, TrayHandlers } from "./logic";
 import type { Snapshot } from "../src/shared/protocol";
 
 export class AppTray {
   private tray: Tray | null = null;
   private last: Snapshot | null = null;
+  private variant: AppIcon = "colorido";
 
   constructor(private assets: string, private handlers: TrayHandlers) {
-    nativeTheme.on("updated", () => this.tray?.setImage(this.icon()));
     this.setVisible(true);
+  }
+
+  /** Troca a arte do ícone da bandeja (a que a pessoa escolheu em Configurações > Geral). */
+  setIcon(variant: AppIcon): void {
+    this.variant = variant;
+    this.tray?.setImage(this.icon());
   }
 
   /** "Mostrar o ícone na bandeja": sem o ícone, o app só reabre pelo atalho do programa (segunda instância). */
@@ -26,9 +33,8 @@ export class AppTray {
   }
 
   private icon() {
-    // ícone monocromático: branco em barra escura, preto em barra clara (a barra do Windows segue o tema do sistema)
-    const file = nativeTheme.shouldUseDarkColors ? "tray-dark.png" : "tray-light.png";
-    return nativeImage.createFromPath(path.join(this.assets, file));
+    // tray-<arte>.png (32 px) e tray-<arte>@2x.png (64 px): o Electron escolhe o tamanho certo pela tela
+    return nativeImage.createFromPath(path.join(this.assets, `tray-${this.variant}.png`));
   }
 
   update(snapshot: Snapshot | null): void {
