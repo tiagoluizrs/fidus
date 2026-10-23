@@ -548,7 +548,7 @@ Em **Configurações > Geral > Ícone do app** a pessoa escolhe a arte (escuro, 
 
 Em Configurações > Modelo de IA, escolha **Gemini** para usar a API do Google, que tem **plano grátis** (com limites por minuto
 e por dia). Crie a chave em [aistudio.google.com](https://aistudio.google.com) > *Get API key* e cole na tela (começa com
-`AIza`; vai para o cofre do Windows). Modelos: `gemini-2.5-flash` (padrão), `gemini-2.5-pro`, `gemini-2.5-flash-lite`.
+formato varia; vai para o cofre do Windows). Modelos: `gemini-2.5-flash` (padrão), `gemini-2.5-pro`, `gemini-2.5-flash-lite`.
 
 - **Privacidade no plano grátis:** segundo o Google, no plano grátis o conteúdo enviado pode ser usado para melhorar os produtos
   dele. A tela avisa isso. Para e-mails e mensagens sensíveis, prefira o Claude, o Gemini pago ou o modelo Local.

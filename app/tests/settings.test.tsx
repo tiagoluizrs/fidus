@@ -349,7 +349,7 @@ describe("Gemini", () => {
     expect(await screen.findByText(/pode ser usado para melhorar os produtos deles/)).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "gemini-2.5-flash" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Definir" }));
-    await user.type(screen.getByLabelText(/começa com AIza/), "AIza" + "k".repeat(35));
+    await user.type(screen.getByLabelText("Chave do Gemini", { selector: "input" }), "AQ.Ab8" + "k".repeat(35));
     await user.click(screen.getByRole("button", { name: "Guardar" }));
     await waitFor(() => expect(sent(f.calls, "api_key", "set")[0][1]).toMatchObject({ provider: "gemini" }));
   });
