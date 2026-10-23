@@ -77,7 +77,7 @@ class OllamaProvider:
                         piece = msg["content"]
                         text.append(piece)
                         if on_text:
-                            if held or ("".join(text).lstrip().startswith("{") and tools):
+                            if held or ("".join(text).lstrip().startswith(("{", "`")) and tools):
                                 held.append(piece)
                             else:
                                 on_text(piece)
@@ -94,8 +94,13 @@ class OllamaProvider:
                 f"Não consegui falar com o Ollama em {self.url}. Ele está aberto? (Abra o app do Ollama ou rode `ollama serve`.)"
             ) from e
         full = "".join(text)
-        if tools and not calls and full.lstrip().startswith("{") and (as_call := _text_tool_call(full, {t.name for t in tools})):
+        if tools and not calls and (full.lstrip().startswith(("{", "`")) or "{" in full) and (as_call := _text_tool_call(full, {t.name for t in tools})):
             return Response(text="", tool_calls=[as_call])
+        if tools and not calls and looks_like_tool_json(full):  # chamada inválida: não mostra JSON cru para a pessoa
+            msg = "Não consegui entender a resposta do modelo (ele devolveu uma chamada de ferramenta inválida). Tente de novo ou use um modelo maior (8B)."
+            if on_text:
+                on_text(msg)
+            return Response(text=msg)
         if held and on_text:
             on_text("".join(held))  # era só texto que começava com "{"
         return Response(text=full, tool_calls=calls)
@@ -169,9 +174,25 @@ def _to_api(messages: list[Message]) -> list[dict]:
     return out
 
 
+def _extract_json(text: str) -> dict:
+    """O JSON da resposta, mesmo dentro de ```json ... ``` ou com uma frase antes/depois."""
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.strip("`").removeprefix("json").strip()
+    data = _loads_dict(t)
+    if not data and "{" in t and "}" in t:
+        data = _loads_dict(t[t.index("{") : t.rindex("}") + 1])
+    return data
+
+
+def looks_like_tool_json(text: str) -> bool:
+    d = _extract_json(text)
+    return bool(d) and bool({"name", "function", "parameters", "arguments", "tool_calls"} & set(d))
+
+
 def _text_tool_call(text: str, names: set[str]) -> ToolCall | None:
     """Reconhece "{"type":"function","function":{"name":...,"parameters":{...}}}" (ou só {"name":...,"parameters":...}) no texto."""
-    data = _loads_dict(text.strip())
+    data = _extract_json(text)
     fn = data.get("function") if isinstance(data.get("function"), dict) else data
     name = fn.get("name")
     args = fn.get("parameters", fn.get("arguments", {}))

@@ -278,14 +278,14 @@ describe("Baixar modelo do Ollama pelo painel", () => {
   it("baixa, mostra o progresso e deixa o modelo selecionado", async () => {
     const f = installFakeCore({ effective: { "modelo.provedor": "local" } });
     const user = await open("Modelo de IA");
-    await user.type(await screen.findByLabelText("Baixar um modelo"), "llama3.2:3b");
+    await user.type(await screen.findByLabelText("Baixar um modelo"), "qwen2.5:7b");
     await user.click(screen.getByRole("button", { name: "Baixar" }));
-    await waitFor(() => expect(sent(f.calls, "local_models", "pull")[0][1].model).toBe("llama3.2:3b"));
-    f.emit({ type: "model_pull", what: "llama3.2:3b", state: "progress", done: 50, total: 100 });
-    expect(await screen.findByRole("progressbar", { name: "Baixando llama3.2:3b" })).toHaveAttribute("value", "50");
-    f.emit({ type: "model_pull", what: "llama3.2:3b", state: "done" });
-    await waitFor(() => expect(f.effective["modelo.local"]).toBe("llama3.2:3b"));
-    expect(await screen.findByRole("option", { name: "llama3.2:3b" })).toBeInTheDocument();
+    await waitFor(() => expect(sent(f.calls, "local_models", "pull")[0][1].model).toBe("qwen2.5:7b"));
+    f.emit({ type: "model_pull", what: "qwen2.5:7b", state: "progress", done: 50, total: 100 });
+    expect(await screen.findByRole("progressbar", { name: "Baixando qwen2.5:7b" })).toHaveAttribute("value", "50");
+    f.emit({ type: "model_pull", what: "qwen2.5:7b", state: "done" });
+    await waitFor(() => expect(f.effective["modelo.local"]).toBe("qwen2.5:7b"));
+    expect(await screen.findByRole("option", { name: "qwen2.5:7b" })).toBeInTheDocument();
   });
 
   it("erro no download aparece e não troca o modelo", async () => {
@@ -323,5 +323,19 @@ describe("Contas se atualiza ao voltar da página do Google", () => {
     const meio = sent(f.calls, "accounts", "list").length;
     f.emit({ type: "ready", protocol: 1, snapshot: {} as never });
     await waitFor(() => expect(sent(f.calls, "accounts", "list").length).toBeGreaterThan(meio));
+  });
+});
+
+describe("modelos pequenos", () => {
+  it("reconhece os modelos fracos e deixa os de 7B/8B em paz", async () => {
+    const { isSmallModel } = await import("../src/settings/pages/ModeloIA");
+    for (const n of ["llama3.2:1b", "llama3.2:3b", "qwen2.5:0.5b", "gemma2:2b", "phi3:3.8b-mini".replace("3.8b", "3b")]) expect(isSmallModel(n), n).toBe(true);
+    for (const n of ["llama3.1:8b", "qwen3:8b", "qwen2.5:7b", "llama3.3:70b", "mistral:7b", "qwen3:32b", "llama3.1:latest"]) expect(isSmallModel(n), n).toBe(false);
+  });
+
+  it("avisa quando o modelo escolhido é pequeno", async () => {
+    installFakeCore({ effective: { "modelo.provedor": "local", "modelo.local": "llama3.2:3b" } });
+    await open("Modelo de IA");
+    expect(await screen.findByText(/é pequeno e costuma responder mal/)).toBeInTheDocument();
   });
 });

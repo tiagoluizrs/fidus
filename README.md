@@ -573,6 +573,9 @@ seu núcleo). Abra-o:
   confirmações aparecem na tela.
 - **Configurações** (`/settings.html`): em **Modelo de IA** cole a chave do Claude ou escolha **Local** (Ollama aberto no seu PC;
   o container enxerga o `localhost` do PC por um encaminhamento interno, e o endereço continua restrito a `127.0.0.1`).
+- **Modelo local:** só vale a pena de **7B para cima** (`llama3.1:8b`, `qwen3:8b`, `qwen2.5:7b`); os de 1B e 3B erram demais ao usar
+  ferramentas, e a tela avisa. Sem placa de vídeo o Ollama roda na CPU (lento, mas funciona); com NVIDIA:
+  `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up web`.
 - Chaves, memória e configurações ficam no volume `fidus-data` (sobrevivem a reinicios; `docker compose down -v` apaga).
   Sem o cofre do Windows no container, as chaves ficam num arquivo do volume só com permissão do dono: **só para teste**.
 

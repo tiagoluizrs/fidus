@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useCore } from "../core";
 import { Badge, Button, Dialog, Page, Row, Section, Switch } from "../ui";
 
+/** Modelos de até 3 bilhões de parâmetros (1b, 3b, 0.5b...) erram demais com ferramentas. */
+export const isSmallModel = (name: string): boolean => /(^|[:\-_ ])(0\.\d+|1|1\.5|2|3)b(\b|$)/i.test(name);
+
 interface LocalModels { running: boolean; models: string[]; suggested: string; url: string; busy?: boolean }
 
 export function ModeloIA() {
@@ -74,25 +77,28 @@ export function ModeloIA() {
         )}
         {local && (
           <Row label="Modelo local" htmlFor="local-model"
-            hint={ollama?.running === false ? "O Ollama não está acessível. Abra o app dele e clique em Atualizar." : installed.length ? "Escolha um modelo que suporte ferramentas (por exemplo llama3.2, llama3.1 ou qwen3)." : "Nenhum modelo baixado ainda: baixe um abaixo."}>
+            hint={ollama?.running === false ? "O Ollama não está acessível. Abra o app dele e clique em Atualizar." : installed.length ? "Escolha um modelo que suporte ferramentas, de 7B para cima (llama3.1, qwen3, qwen2.5)." : "Nenhum modelo baixado ainda: baixe um abaixo."}>
             <span className="inline">
               <Badge tone={ollama?.running ? "ok" : "neutral"}>{ollama == null ? "Verificando…" : ollama.running ? "Ollama aberto" : "Ollama fechado"}</Badge>
               <select id="local-model" value={localModel} onChange={(e) => save({ "modelo.local": e.target.value })}>
                 {!installed.includes(localModel) && <option value={localModel}>{localModel}{ollama?.running ? " (não baixado)" : ""}</option>}
-                {installed.map((m) => <option key={m} value={m}>{m}</option>)}
+                {installed.map((m) => <option key={m} value={m}>{m}{isSmallModel(m) ? " (fraco)" : ""}</option>)}
               </select>
               <Button onClick={() => void refresh()}>Atualizar</Button>
             </span>
           </Row>
         )}
+        {local && isSmallModel(localModel) && (
+          <p className="notice" role="note">O modelo <strong>{localModel}</strong> é pequeno e costuma responder mal e errar as ferramentas. Para o Fidus funcionar bem, use um de 7B ou 8B (por exemplo llama3.1:8b).</p>
+        )}
         {local && ollama?.running && (
-          <Row label="Baixar um modelo" htmlFor="pull-name" hint="Baixa pelo próprio Ollama, uma vez. Modelos de 3B são rápidos; os de 8B pedem mais memória e tempo.">
+          <Row label="Baixar um modelo" htmlFor="pull-name" hint="Baixa pelo próprio Ollama, uma vez. Só vale a pena de 7B para cima (cerca de 5 GB e 8 GB de memória livre): os menores erram demais ao usar ferramentas.">
             <span className="inline">
-              <input id="pull-name" list="pull-suggestions" value={pullName} placeholder="llama3.2:3b" onChange={(e) => setPullName(e.target.value)} />
+              <input id="pull-name" list="pull-suggestions" value={pullName} placeholder="llama3.1:8b" onChange={(e) => setPullName(e.target.value)} />
               <datalist id="pull-suggestions">
-                <option value="llama3.2:3b">Llama 3.2 · 3B (~2 GB, rápido)</option>
                 <option value="llama3.1:8b">Llama 3.1 · 8B (~4,7 GB)</option>
-                <option value="qwen3:8b">Qwen 3 · 8B (~5 GB)</option>
+                <option value="qwen3:8b">Qwen 3 · 8B (~5,2 GB)</option>
+                <option value="qwen2.5:7b">Qwen 2.5 · 7B (~4,7 GB)</option>
               </datalist>
               <Button disabled={!pullName.trim() || pull !== null || ollama.busy} onClick={() => void startPull()}>{pull ? "Baixando…" : "Baixar"}</Button>
             </span>
