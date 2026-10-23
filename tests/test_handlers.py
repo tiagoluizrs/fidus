@@ -643,3 +643,33 @@ def test_erro_ao_baixar_modelo_vira_evento_de_erro(cmds, monkeypatch):
             break
         time.sleep(0.02)
     assert ("model_pull", {"what": "qwen2.5:7b", "state": "error", "message": "Ollama fechado"}) in cmds.sink.seen
+
+
+# ---------- Gemini ----------
+
+
+def test_chave_do_gemini_vai_para_o_cofre_e_so_aceita_o_formato_certo(cmds, monkeypatch):
+    fv = FakeVault().install(monkeypatch)
+    assert call(cmds, "api_key", provider="gemini") == {"stored": False, "source": "nenhuma"}
+    for ruim in ("sk-ant-" + "x" * 30, "AIzaCurta", "AIza" + "x" * 20 + " " + "y" * 20):
+        with pytest.raises(ValueError, match="não parece uma chave do Gemini"):
+            call(cmds, "api_key", op="set", value=ruim, provider="gemini")
+    r = call(cmds, "api_key", op="set", value="AIza" + "k" * 35, provider="gemini")
+    assert r == {"stored": True, "source": "cofre"} and "k" * 35 not in str(r)
+    assert fv.d[vault.GEMINI_KEY].startswith("AIza") and vault.ANTHROPIC_KEY not in fv.d  # não mistura com a da Anthropic
+    assert call(cmds, "api_key", op="delete", provider="gemini")["stored"] is False
+
+
+def test_escolher_o_gemini_atualiza_provedor_estado_e_lista_de_modelos(cmds, config):
+    from types import SimpleNamespace
+
+    from fidus.core.providers.anthropic import AnthropicProvider
+
+    orch = SimpleNamespace(provider=AnthropicProvider("claude-sonnet-5-5"))
+    cmds.loop = SimpleNamespace(handler=SimpleNamespace(orchestrator=orch))
+    call(cmds, "set_settings", patch={"modelo.provedor": "gemini", "modelo.gemini": "gemini-2.5-pro"})
+    assert orch.provider.kind == "gemini" and orch.provider.model == "gemini-2.5-pro"
+    assert ("model", {"provider": "gemini", "name": "gemini-2.5-pro", "where": "Nuvem (Google)"}) in cmds.sink.seen
+    assert "gemini-2.5-flash" in call(cmds, "get_settings")["gemini_models"]
+    with pytest.raises(Exception):
+        call(cmds, "set_settings", patch={"modelo.gemini": "gpt-5"})

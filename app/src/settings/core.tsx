@@ -9,6 +9,7 @@ export interface SettingsData {
   effective: Eff;
   schema: string[];
   claude_models: string[];
+  gemini_models?: string[];
   restart_required: string[];
 }
 export interface Toast {
@@ -26,6 +27,7 @@ export interface CoreApi {
   save: (patch: Record<string, unknown>) => Promise<boolean>;
   loaded: boolean;
   claudeModels: string[];
+  geminiModels: string[];
   restartNeeded: string[];
   clearRestart: () => void;
   toasts: Toast[];
@@ -50,6 +52,7 @@ export function CoreProvider({ children }: { children: ReactNode }) {
   const [eff, setEff] = useState<Eff>({});
   const [loaded, setLoaded] = useState(false);
   const [models, setModels] = useState<string[]>([]);
+  const [gModels, setGModels] = useState<string[]>([]);
   const [restart, setRestart] = useState<string[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [chars, setChars] = useState<CoreApi["characters"]>([]);
@@ -85,6 +88,7 @@ export function CoreProvider({ children }: { children: ReactNode }) {
     if (d) {
       setEff(d.effective);
       setModels(d.claude_models);
+      setGModels(d.gemini_models ?? []);
       setLoaded(true);
     }
   }, [call]);
@@ -135,7 +139,7 @@ export function CoreProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<CoreApi>(
     () => ({
-      call, eff, save, loaded, claudeModels: models, restartNeeded: restart, clearRestart: () => setRestart([]), toasts, notify,
+      call, eff, save, loaded, claudeModels: models, geminiModels: gModels, restartNeeded: restart, clearRestart: () => setRestart([]), toasts, notify,
       subscribe: (cb) => {
         subs.current.add(cb);
         return () => subs.current.delete(cb);

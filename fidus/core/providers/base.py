@@ -31,6 +31,7 @@ class ToolCall:
     id: str
     name: str
     arguments: dict[str, Any]
+    extra: Any = None  # dado bruto do provedor que precisa voltar na próxima rodada (ex.: assinatura de raciocínio do Gemini)
 
 
 @dataclass

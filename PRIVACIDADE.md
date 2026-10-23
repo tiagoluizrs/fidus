@@ -15,6 +15,8 @@ e para onde vão. O projeto é pessoal e sem fins comerciais. Contato: abra uma 
 ## O que sai do computador, e só quando você usa
 - **Modelo de IA na nuvem (Claude, da Anthropic):** o seu pedido e os trechos necessários para respondê-lo (por exemplo, o
   conteúdo de um e-mail que você pediu para resumir). Com o modelo **local (Ollama)** nada sai da máquina.
+- **Modelo de IA na nuvem (Gemini, do Google), opcional:** o mesmo conteúdo, se você escolher o Gemini. No plano grátis do
+  Gemini, o Google pode usar o conteúdo enviado para melhorar os produtos dele; leia a política do Google antes de escolher.
 - **Voz na nuvem (ElevenLabs), opcional:** o texto que o assistente fala e, se você criar a "sua própria voz", a gravação
   que você fez com o seu consentimento. A conta é sua.
 - **Google (Gmail e Agenda), opcional:** o Fidus pede acesso à **sua** conta por meio do login do Google (OAuth) e guarda só um
