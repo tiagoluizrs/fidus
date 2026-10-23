@@ -11,7 +11,7 @@ from pathlib import Path
 from .paths import default_data_dir, legacy_data_dir, migrate_legacy
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
-DEFAULT_LOCAL_MODEL = "qwen3:8b"
+DEFAULT_LOCAL_MODEL = "llama3.2:3b"
 DEFAULT_MAX_TOOL_CALLS = 8
 
 # Apps que abrem sem confirmação (nome falado -> comando do Windows).

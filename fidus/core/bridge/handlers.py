@@ -455,7 +455,7 @@ class Handlers:
             raise ValueError(str(e)) from e
         return {"started": True}
 
-    def _job(self, name: str, fn) -> None:
+    def _job(self, name: str, fn, event: str = "voice_setup") -> None:
         import threading
         import time
 
@@ -470,14 +470,14 @@ class Handlers:
         def progress(done: int, total: int) -> None:
             if time.monotonic() - last[0] > 0.25:
                 last[0] = time.monotonic()
-                self.emit("voice_setup", what=name, state="progress", done=done, total=total)
+                self.emit(event, what=name, state="progress", done=done, total=total)
 
         def run() -> None:
             try:
                 fn(progress)
-                self.emit("voice_setup", what=name, state="done")
-            except (SetupError, OSError) as e:
-                self.emit("voice_setup", what=name, state="error", message=str(e))
+                self.emit(event, what=name, state="done")
+            except (SetupError, OSError, RuntimeError) as e:  # RuntimeError: OllamaError
+                self.emit(event, what=name, state="error", message=str(e))
             finally:
                 with self._jobs_lock:
                     self._jobs.discard(name)
@@ -620,13 +620,20 @@ class Handlers:
 
         threading.Thread(target=run, daemon=True, name="fidus-record-sample").start()
 
-    def local_models(self) -> dict:
-
-        """Modelos já baixados no Ollama (para a tela). Se o Ollama não estiver rodando, diz isso em vez de falhar."""
+    def local_models(self, op: str = "list", model: str = "") -> dict:
+        """Modelos já baixados no Ollama (para a tela) e download de modelos novos, com progresso pelo evento `model_pull`."""
         from ..config import DEFAULT_LOCAL_MODEL
-        from ..providers.ollama import OllamaError, list_models
+        from ..providers.ollama import MODEL_NAME, OllamaError, list_models, pull_model
 
-        base = {"url": self.config.local_url, "suggested": DEFAULT_LOCAL_MODEL}
+        if op == "pull":
+            model = model.strip()
+            if not MODEL_NAME.fullmatch(model):
+                raise ValueError("Nome de modelo inválido. Use algo como llama3.2:3b.")
+            self._job(model, lambda progress: pull_model(self.config.local_url, model, progress), event="model_pull")
+            return {"started": True}
+        if op != "list":
+            raise ValueError(f"Operação desconhecida: {op}")
+        base = {"url": self.config.local_url, "suggested": DEFAULT_LOCAL_MODEL, "busy": bool(self._jobs)}
         try:
             return {**base, "running": True, "models": list_models(self.config.local_url)}
         except OllamaError as e:

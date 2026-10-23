@@ -143,11 +143,12 @@ describe("tela Modelo de IA (Ollama)", () => {
     await waitFor(() => expect(f.effective["modelo.local_acoes"]).toBe(false));
   });
 
-  it("Ollama fechado avisa e ensina o comando", async () => {
+  it("Ollama fechado avisa o que fazer e esconde o download", async () => {
     installFakeCore({ effective: { "modelo.provedor": "local" }, ollamaRunning: false });
     await open("Modelo de IA");
     expect(await screen.findByText("Ollama fechado")).toBeInTheDocument();
-    expect(screen.getByText(/ollama pull qwen3:8b/)).toBeInTheDocument();
+    expect(screen.getByText(/Abra o app dele e clique em Atualizar/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Baixar um modelo")).toBeNull();
   });
 });
 
@@ -268,5 +269,29 @@ describe("Conectar o Google sem credenciais", () => {
     expect(within(agenda).getByRole("button", { name: "Conectar" })).toBeDisabled();
     expect(within(screen.getByLabelText("Slack")).getByRole("button", { name: "Conectar" })).toBeEnabled(); // o Slack não usa o Google
     expect(screen.getAllByText(/Envie o credentials.json do Google/).length).toBeGreaterThan(0);
+  });
+});
+
+describe("Baixar modelo do Ollama pelo painel", () => {
+  it("baixa, mostra o progresso e deixa o modelo selecionado", async () => {
+    const f = installFakeCore({ effective: { "modelo.provedor": "local" } });
+    const user = await open("Modelo de IA");
+    await user.type(await screen.findByLabelText("Baixar um modelo"), "llama3.2:3b");
+    await user.click(screen.getByRole("button", { name: "Baixar" }));
+    await waitFor(() => expect(sent(f.calls, "local_models", "pull")[0][1].model).toBe("llama3.2:3b"));
+    f.emit({ type: "model_pull", what: "llama3.2:3b", state: "progress", done: 50, total: 100 });
+    expect(await screen.findByRole("progressbar", { name: "Baixando llama3.2:3b" })).toHaveAttribute("value", "50");
+    f.emit({ type: "model_pull", what: "llama3.2:3b", state: "done" });
+    await waitFor(() => expect(f.effective["modelo.local"]).toBe("llama3.2:3b"));
+    expect(await screen.findByRole("option", { name: "llama3.2:3b" })).toBeInTheDocument();
+  });
+
+  it("erro no download aparece e não troca o modelo", async () => {
+    const f = installFakeCore({ effective: { "modelo.provedor": "local" } });
+    await open("Modelo de IA");
+    await screen.findByLabelText("Baixar um modelo");
+    f.emit({ type: "model_pull", what: "x:1b", state: "error", message: "O modelo 'x:1b' não existe no catálogo do Ollama." });
+    expect(await screen.findByText(/não existe no catálogo/)).toBeInTheDocument();
+    expect(f.effective["modelo.local"]).toBe("qwen3:8b");
   });
 });

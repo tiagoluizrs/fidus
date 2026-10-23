@@ -25,8 +25,16 @@ services:
   #   docker compose up web           -> abra o endereco http://127.0.0.1:5174/?k=... que aparece no terminal
   # So no terminal, por texto:
   #   docker compose run --rm chat
+  # O Ollama (modelo local) roda aqui dentro: voce baixa e escolhe o modelo pela tela. Sem GPU, modelos pequenos
+  # (llama3.2:3b) respondem em poucos segundos; os de 8B ficam bem mais lentos.
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
   web:
     <<: *base
+    depends_on:
+      - ollama
     tty: false
     volumes: &realvolumes
       - .:/work
@@ -41,10 +49,13 @@ services:
     environment: &realenv
       FIDUS_HOME: /data
       FIDUS_WEB_BIND: 0.0.0.0
+      OLLAMA_UPSTREAM: ollama:11434  # o Fidus fala com 127.0.0.1:11434 (regra de segurança); a ponte encaminha para o container do Ollama
       FIDUS_SECRETS_FILE: /data/secrets.json  # sem o cofre do Windows no container: as chaves coladas na tela ficam aqui
     command: ["bash", "docker/web.sh"]
   chat:
     <<: *base
+    depends_on:
+      - ollama
     volumes: *realvolumes
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -60,6 +71,7 @@ services:
       FIDUS_SCREENSHOT_DIR: /work/shots
     command: bash -lc "cd app && npm run build && xvfb-run -a npx electron . --no-sandbox --simulado"
 volumes:
+  ollama-models:
   fidus-data:
   venv:
   node_modules:
