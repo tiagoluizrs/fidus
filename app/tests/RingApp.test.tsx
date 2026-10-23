@@ -25,15 +25,15 @@ beforeEach(() => {
   HTMLCanvasElement.prototype.getContext = (() => null) as never;
   window.fidus = {
     ...api,
-    onEvent: (cb) => {
+    onEvent: (cb: (e: CoreEvent) => void) => {
       emit = cb;
       return () => {};
     },
-    onThemeChange: (cb) => {
+    onThemeChange: (cb: (t: "light" | "dark") => void) => {
       themeCb = cb;
       return () => {};
     },
-  } as FidusApi;
+  } as unknown as FidusApi;
 });
 
 const mount = async () => {

@@ -22,7 +22,8 @@ describe("segurança do Electron", () => {
       expect(src, f).not.toMatch(/webSecurity:\s*false/);
       expect(src, f).not.toMatch(/sandbox:\s*false/);
       expect(src, f).not.toMatch(/loadURL\(\s*["'`]https?:/);
-      expect(src, f).not.toMatch(/\bexecSync\b|\bshell\.openExternal\b|enableRemoteModule|\bremote\b\s*:/);
+      for (const m of src.matchAll(/shell\.openExternal\(([^)]*)\)/g)) expect(m[1], f).toBe("MIC_SETTINGS_URL"); // só o endereço fixo dos ajustes do microfone
+      expect(src, f).not.toMatch(/\bexecSync\b|enableRemoteModule|\bremote\b\s*:/);
     }
   });
 
@@ -31,7 +32,7 @@ describe("segurança do Electron", () => {
     const exposed = [...src.matchAll(/exposeInMainWorld\("(\w+)"/g)].map((m) => m[1]);
     expect(exposed).toEqual(["fidus"]);
     const keys = [...src.matchAll(/^\s{2}(\w+)[(:]/gm)].map((m) => m[1]);
-    expect(keys.sort()).toEqual(["closeWindow", "command", "getSnapshot", "getTheme", "onEvent", "onThemeChange"]);
+    expect(keys.sort()).toEqual(["closeWindow", "command", "copyText", "getSnapshot", "getTheme", "micStatus", "onEvent", "onNavigate", "onThemeChange", "openMicSettings", "openPath", "pickFolder", "pickSavePath", "restartCore", "saveTextFile"]);
     expect(src).not.toMatch(/token|require\(|process\./i);
     expect(src).not.toContain("ipcRenderer,"); // o ipcRenderer em si não é exposto
   });

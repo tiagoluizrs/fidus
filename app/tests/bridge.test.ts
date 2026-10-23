@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
 import { BridgeClient } from "../electron/bridge";
@@ -151,4 +153,45 @@ describe.skipIf(!hasUv)("protocolo contra o núcleo simulado (Python)", () => {
     await proc.stop(() => c.request("quit"), 5000);
     c.close();
   }, 60000);
+
+  it("operações das telas de Configurações funcionam de ponta a ponta (personagens, memória, privacidade)", async () => {
+    const home = mkdtempSync(path.join(tmpdir(), "fidus-5b-"));
+    const proc = new CoreProcess({ command: "uv", args: ["run", "fidus", "daemon", "--stdin-watch", "--simulado"], cwd: root, env: { FIDUS_HOME: home } }, undefined, 0);
+    const info = await new Promise<{ port: number; token: string }>((resolve) => {
+      proc.once("ready", resolve);
+      proc.start();
+    });
+    const c = new BridgeClient();
+    await c.connect(info.port, info.token);
+    const ok = async (name: string, args: Record<string, unknown> = {}) => {
+      const r: any = await c.request(name, args);
+      expect(r.ok, `${name}: ${r.error}`).toBe(true);
+      return r.data;
+    };
+
+    const got = await ok("characters", { op: "get", id: "donna" });
+    expect(got.id).toBe("donna");
+    const edited = await ok("characters", { op: "set_control", id: "donna", control: "humor", value: 77 });
+    expect(edited.personality.controls.humor.value).toBe(77);
+    const added = await ok("characters", { op: "item_add", id: "donna", list: "concluir", text: "Feito, {tratamento}." });
+    expect(JSON.stringify(added.phrases.concluir)).toContain("Feito, {tratamento}.");
+
+    const m = await ok("memory", { op: "add", text: "Prefere café sem açúcar", section: "perfil" });
+    const listed = await ok("memory", { op: "list", query: "café" });
+    expect(listed.entries.map((e: any) => e.id)).toContain(m.entry.id);
+    expect(await c.request("memory", { op: "delete", id: m.entry.id })).toMatchObject({ ok: false }); // sem confirm:true, nada some
+    await ok("memory", { op: "delete", id: m.entry.id, confirm: true });
+    expect((await ok("memory", { op: "list" })).entries).toEqual([]);
+
+    const saved = await ok("set_settings", { patch: { "chamados.sensibilidade": 70 } });
+    expect(saved.saved).toContain("chamados.sensibilidade");
+    expect((await ok("get_settings")).effective["chamados.sensibilidade"]).toBe(70);
+    expect(await c.request("set_settings", { patch: { "voz.velocidade_voz": 99 } })).toMatchObject({ ok: false });
+    expect(await c.request("privacy", { op: "clear_all" })).toMatchObject({ ok: false });
+    expect(await c.request("api_key", { op: "set", value: "nao-e-chave" })).toMatchObject({ ok: false });
+
+    await proc.stop(() => c.request("quit"), 5000);
+    c.close();
+    rmSync(home, { recursive: true, force: true });
+  }, 90000);
 });

@@ -49,6 +49,9 @@ export type CoreEvent =
   | ({ type: "model" } & ModelInfo)
   | { type: "calls"; enabled: boolean; until: number | null }
   | { type: "settings"; changed: string[] }
+  | { type: "characters_changed"; id: string }
+  | { type: "memory_changed" }
+  | { type: "accounts"; service: string; status: "connected" | "disconnected" | "error"; message: string }
   | { type: "error"; message: string };
 
 export const COMMANDS = [
@@ -62,6 +65,14 @@ export const COMMANDS = [
   "set_settings",
   "ping",
   "quit",
+  "characters",
+  "memory",
+  "accounts",
+  "privacy",
+  "about",
+  "voices",
+  "devices",
+  "api_key",
   "simulate",
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];
@@ -82,6 +93,16 @@ export interface FidusApi {
   closeWindow(): void;
   getTheme(): Promise<"light" | "dark">;
   onThemeChange(cb: (t: "light" | "dark") => void): () => void;
+  // --- só a janela de Configurações (o processo principal confere de quem veio o pedido) ---
+  pickFolder(): Promise<string | null>;
+  pickSavePath(suggestedName: string, ext: string): Promise<string | null>;
+  saveTextFile(suggestedName: string, content: string): Promise<boolean>;
+  openPath(kind: "data" | "log"): Promise<boolean>;
+  openMicSettings(): Promise<void>;
+  micStatus(): Promise<string>;
+  restartCore(): Promise<void>;
+  copyText(text: string): Promise<void>;
+  onNavigate(cb: (page: string) => void): () => void;
 }
 
 declare global {
