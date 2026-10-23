@@ -88,14 +88,14 @@ export function Contas() {
                 {s.coming_soon ? (
                   <span className="muted small">Chega em uma próxima versão.</span>
                 ) : (
-                  <span className="muted small">{s.connected ? `Conectado · ${ABOUT[s.id]}` : "Não conectado."}</span>
+                  <span className="muted small">{s.connected ? `Conectado · ${ABOUT[s.id]}` : s.id !== "slack" && !st?.google_credentials ? "Envie o credentials.json do Google (acima) para conectar." : "Não conectado."}</span>
                 )}
               </div>
               <div className="account-actions">
                 {s.coming_soon && <Badge tone="soon">Em breve</Badge>}
                 {!s.coming_soon && s.connected && <Button onClick={() => setPerm(s)}>Permissões</Button>}
                 {!s.coming_soon && s.connected && <Button onClick={async () => { await call("accounts", { op: "disconnect", service: s.id }); await load(); }}>Desconectar</Button>}
-                {!s.coming_soon && !s.connected && <Button variant="primary" disabled={busy === s.id} onClick={() => void connect(s)}>{busy === s.id ? "Aguardando…" : "Conectar"}</Button>}
+                {!s.coming_soon && !s.connected && <Button variant="primary" disabled={busy === s.id || (s.id !== "slack" && !st?.google_credentials)} title={s.id !== "slack" && !st?.google_credentials ? "Envie o credentials.json em “Credenciais do Google”, acima." : undefined} onClick={() => void connect(s)}>{busy === s.id ? "Aguardando…" : "Conectar"}</Button>}
               </div>
             </div>
           ))}
