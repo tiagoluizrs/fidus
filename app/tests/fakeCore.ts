@@ -3,6 +3,9 @@ import type { CoreEvent, FidusApi, Reply, Snapshot } from "../src/shared/protoco
 
 type Obj = Record<string, any>;
 
+// No Vitest vira vi.fn (dá para espiar chamadas); no navegador (npm run dev:web) é a própria função.
+const vf: any = (globalThis as any).vi?.fn ?? ((f?: any) => f ?? (() => {}));
+
 export function makeProfile(id = "alfred"): Obj {
   const item = (iid: string, text: string, origin = "padrao", enabled = true) => ({ id: iid, text, enabled, origin, contexts: [] });
   return {
@@ -28,11 +31,15 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
     "privacidade.registrar_acoes": true, "privacidade.guardar_log_dias": 30, "privacidade.guardar_historico": true,
     "privacidade.avisar_microfone": true, "modelo.provedor": "claude", "modelo.claude": "claude-sonnet-5-5", "modelo.local": "qwen3:8b", "modelo.local_acoes": false, "modelo.local_acoes_ciente": false, "arquivos.pastas_liberadas": [], ...init.effective,
   };
+  const piper: Obj = { supported: true, installed: false, download_mb: 22, busy: false, voices: [
+    { id: "pt_BR-faber-medium", label: "Faber", size_mb: 63, installed: false }, { id: "pt_BR-cadu-medium", label: "Cadu", size_mb: 63, installed: false }] };
+  const cloud: Obj = { has_key: false, stored: false, has_sample: false };
   const memory: Obj[] = [];
   const log: Obj[] = [{ ts: "2026-10-23T12:00:00+00:00", tool: "abrir_app", risk: "escrita", decision: "confirmado", args: {}, result: "" }];
   let nextMem = 1;
   let calls_state = { enabled: true, until: null as number | null };
   let key = { stored: true, source: "cofre" };
+  let googleCredentials = true;
   let services: Obj[] = init.services ?? [
     { id: "gmail", kind: "email", name: "Gmail", connected: true, write: false, write_label: "criar rascunhos" },
     { id: "outlook", kind: "email", name: "Outlook", coming_soon: true },
@@ -91,6 +98,21 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
       case "calls": calls_state = { enabled: a.value, until: null }; return ok({ enabled: a.value });
       case "set_default_character": Object.values(profiles).forEach((p) => (p.is_default = p.id === a.id)); return ok({ default_character: a.id });
       case "characters": return characters(a);
+      case "piper": {
+        if (a.op === "install") piper.installed = true;
+        if (a.op === "download_voice") piper.voices.find((x: Obj) => x.id === a.voice).installed = true;
+        if (a.op === "remove_voice") piper.voices.find((x: Obj) => x.id === a.voice).installed = false;
+        return ok(a.op === "status" || a.op === undefined || a.op === "remove_voice" ? { ...piper, voices: piper.voices.map((x: Obj) => ({ ...x })) } : { started: true }); // cópia: o React ignora o mesmo objeto
+      }
+      case "voice_cloud": {
+        if (a.op === "set_key") { if (String(a.value).length < 20) return fail("Isso não parece uma chave de API do serviço de voz."); cloud.has_key = cloud.stored = true; }
+        if (a.op === "clear_key") cloud.has_key = cloud.stored = false;
+        if (a.op === "design_preview") return ok({ ...cloud, previews: [{ id: "g1" }, { id: "g2" }] });
+        if (a.op === "save_preview") { const p = profiles[a.id]; Object.assign(p.voice, { engine: "descricao", voice: "voz123", description: a.description }); }
+        if (a.op === "clone") { if (a.consent !== true) return fail("Marque que você consente em gravar e usar a sua voz."); profiles[a.id].voice.engine = "propria"; profiles[a.id].voice.voice = "clone1"; }
+        if (a.op === "delete_voice") Object.assign(profiles[a.id].voice, { engine: "sapi", voice: "", description: "" });
+        return ok({ ...cloud });
+      }
       case "voices": return ok({ engine: "sapi", voices: ["Microsoft Maria", "Microsoft Daniel"] });
       case "devices": return ok({ devices: [{ index: 1, name: "Microfone (Realtek)", default: true }, { index: 4, name: "Headset USB", default: false }] });
       case "api_key":
@@ -106,7 +128,9 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
         return fail("op");
       }
       case "accounts": {
-        if (a.op === "list") return ok({ google_credentials: true, services });
+        if (a.op === "list") return ok({ google_credentials: googleCredentials, services });
+        if (a.op === "google_credentials") { if (!String(a.json).includes("installed")) return fail("O arquivo não tem os campos esperados."); googleCredentials = true; return ok({ google_credentials: true, services }); }
+        if (a.op === "google_credentials_remove") { googleCredentials = false; return ok({ google_credentials: false, services }); }
         const s = services.find((x) => x.id === a.service)!;
         if (a.op === "connect") { if (a.service === "slack") { if (!a.token) return fail("Cole o token de usuário do Slack (xoxp-...)."); s.connected = true; s.write = a.write === true; return ok({ google_credentials: true, services }); } return ok({ started: true }); }
         if (a.op === "disconnect") { s.connected = false; return ok({ google_credentials: true, services }); }
@@ -128,24 +152,24 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
 
   const snapshot = { status: "ready", message: "", state: "idle", mic: "passive", character: chars()[0], default_character: "alfred", characters: [], model: { provider: "claude", name: "x", where: "Nuvem" }, calls: calls_state, muted: false } as unknown as Snapshot;
   const api = {
-    command: vi.fn(async (name: string, args: Obj = {}) => { calls.push([name, args]); return handle(name, args); }),
-    getSnapshot: vi.fn(async () => snapshot),
-    getTheme: vi.fn(async () => "light" as const),
-    onThemeChange: vi.fn(() => () => {}),
-    onEvent: vi.fn((cb: (e: CoreEvent) => void) => { listener = cb; return () => {}; }),
-    onNavigate: vi.fn(() => () => {}),
-    closeWindow: vi.fn(),
-    pickFolder: vi.fn(async () => "C:\\Projetos" as string | null),
-    pickSavePath: vi.fn(async () => "C:\\saida\\meus-dados.zip" as string | null),
-    saveTextFile: vi.fn(async () => true),
-    openPath: vi.fn(async () => true),
-    openMicSettings: vi.fn(async () => {}),
-    micStatus: vi.fn(async () => init.micStatus ?? "granted"),
-    restartCore: vi.fn(async () => {}),
-    copyText: vi.fn(async () => {}),
+    command: vf(async (name: string, args: Obj = {}) => { calls.push([name, args]); return handle(name, args); }),
+    getSnapshot: vf(async () => snapshot),
+    getTheme: vf(async () => "light" as const),
+    onThemeChange: vf(() => () => {}),
+    onEvent: vf((cb: (e: CoreEvent) => void) => { listener = cb; return () => {}; }),
+    onNavigate: vf(() => () => {}),
+    closeWindow: vf(),
+    pickFolder: vf(async () => "C:\\Projetos" as string | null),
+    pickSavePath: vf(async () => "C:\\saida\\meus-dados.zip" as string | null),
+    saveTextFile: vf(async () => true),
+    openPath: vf(async () => true),
+    openMicSettings: vf(async () => {}),
+    micStatus: vf(async () => init.micStatus ?? "granted"),
+    restartCore: vf(async () => {}),
+    copyText: vf(async () => {}),
   };
   window.fidus = api as unknown as FidusApi;
-  return { api, calls, profiles, effective, memory, emit: (e: CoreEvent) => listener(e), deletedStash, services: () => services, setServices: (s: Obj[]) => (services = s) };
+  return { api, calls, profiles, effective, memory, piper, cloud, emit: (e: CoreEvent) => listener(e), deletedStash, services: () => services, setServices: (s: Obj[]) => (services = s) };
 }
 
 /** Comandos recebidos com determinado nome (e, opcionalmente, operação). */

@@ -249,7 +249,7 @@ def test_sapi_sintetiza_para_arquivo_sem_falar(sapi, tmp_path):
 def test_piper_gera_com_o_modelo_do_personagem_e_toca(tmp_path):
     calls, played = [], []
 
-    def runner(cmd, input, check, capture_output):
+    def runner(cmd, input, check, capture_output, creationflags=0):
         calls.append((cmd, input))
         Path(cmd[cmd.index("--output_file") + 1]).write_bytes(b"RIFF" + b"\0" * 100)
 
@@ -268,7 +268,7 @@ def test_piper_gera_com_o_modelo_do_personagem_e_toca(tmp_path):
 
 def test_piper_sem_modelo_da_erro_claro_na_sintese(tmp_path):
     t = PiperTTS("piper", lambda *a, **k: None, lambda p, c: None, tmp_dir=tmp_path)
-    with pytest.raises(RuntimeError, match="sem modelo"):
+    with pytest.raises(RuntimeError, match="Piper sem voz"):
         t.synthesize("x", tmp_path / "x.wav")
     t.close()
 
@@ -305,10 +305,21 @@ def test_manager_um_provedor_por_motor_e_voz_por_personagem():
         m.use(Voice(engine="xyz"))
 
 
-def test_voz_por_descricao_na_nuvem_e_so_interface():
-    with pytest.raises(NotImplementedError, match="ponto de extensão"):
-        TTSManager().use(Voice(engine="descricao"))
-    assert hasattr(ttsmod.CloudVoiceProvider, "synthesize")
+def test_vozes_de_nuvem_usam_o_provedor_da_nuvem():
+    made = []
+
+    class _Fake:
+        on_start = None
+        voice_name = ""
+
+        def configure(self, voice, base_rate): ...
+        def stop(self): ...
+
+    m = TTSManager(factories={"descricao": lambda v: made.append("d") or _Fake(), "propria": lambda v: made.append("p") or _Fake()})
+    m.use(Voice(engine="descricao", voice="abc"))
+    m.use(Voice(engine="propria", voice="xyz"))
+    assert made == ["d", "p"]
+    assert set(ttsmod.default_factories()) == {"sapi", "piper", "descricao", "propria"}
 
 
 def test_sapi_fora_do_windows_da_erro_claro(monkeypatch):

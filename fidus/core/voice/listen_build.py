@@ -40,7 +40,7 @@ def build_listen_loop(config: Config, include_test: bool = False, events=None, b
         manager.on_level = lambda values: ui.emit("level", values=values)
         manager.level_enabled = lambda: ui.has_clients
     broker = ConfirmBroker(broker_events) if broker_events is not None else None
-    tts = TTSManager(config.voice.speech_rate)
+    tts = TTSManager(config.voice.speech_rate, data_dir=config.data_dir)
     stt = Transcriber(config, log)
     vad = load_vad(wake.vad_threshold)
     indicator = Indicator()

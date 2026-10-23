@@ -17,6 +17,30 @@ _WEEKDAYS = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "s
 class UserInfo:
     name: str = ""
     surname: str = ""
+    gender: str = ""  # "" (não escolheu: tratamentos como estão) | homem | mulher | neutro (prefere não informar)
+
+
+_HONORIFICS = {"senhor", "senhora"}
+
+
+def _by_gender(text: str, user: UserInfo) -> str | None:
+    """Ajusta "senhor"/"senhora" ao que a pessoa escolheu. Neutro usa o nome (ou nada, se não há nome)."""
+    if not user.gender or text.strip().lower() not in _HONORIFICS:
+        return text
+    if user.gender == "homem":
+        return "senhor"
+    if user.gender == "mulher":
+        return "senhora"
+    return user.name or None
+
+
+def without_address(template: str) -> str:
+    """Tira o {tratamento} da frase e arruma a pontuação: "Pois não, {tratamento}." -> "Pois não."."""
+    out = template
+    if re.match(r"\s*\{tratamento\}\s*,\s*", out):  # "{tratamento}, às ordens." -> "Às ordens."
+        out = re.sub(r"^\s*\{tratamento\}\s*,\s*", "", out)
+        out = out[:1].upper() + out[1:]
+    return re.sub(r"\s*,?\s*\{tratamento\}\s*(?=[.?!;:]|$)", "", out)  # ", senhor" no fim ou antes da pontuação
 
 
 def time_variables(now: datetime) -> dict[str, str]:
@@ -53,14 +77,16 @@ class PhraseEngine:
         items = [i for i in profile.address if i.enabled]
         if profile.address_mode == "fixed":
             r = render(profile.address_fixed, base) if profile.address_fixed else None
+            r = _by_gender(r, user) if r else None
             return [r] if r else []
         wanted = {c for c in (moment, context) if c}
         if profile.address_mode == "context":
             specific = [i for i in items if wanted & set(i.contexts)]
             general = [i for i in items if not i.contexts]
             items = specific or general or items
-        rendered = [(i, render(i.text, base)) for i in items]
-        return [r for _, r in rendered if r]
+        rendered = [render(i.text, base) for i in items]
+        adjusted = [_by_gender(r, user) for r in rendered if r]
+        return list(dict.fromkeys(a for a in adjusted if a))  # sem repetir (ex.: "senhor" e "senhora" viram um só)
 
     def _pick_address(self, profile: Profile, moment: str, user: UserInfo, now: datetime, context: str | None) -> str | None:
         cands = self.address_candidates(profile, moment, user, now, context)
@@ -80,7 +106,8 @@ class PhraseEngine:
         values = {"tratamento": tratamento or "", "nome": user.name, "sobrenome": user.surname, **time_variables(now)}
         usable: list[tuple[Item, str]] = []
         for item in profile.phrases.get(moment, []):
-            if item.enabled and (text := render(item.text, values)):
+            template = without_address(item.text) if not tratamento and user.gender == "neutro" else item.text
+            if item.enabled and (text := render(template, values)):
                 usable.append((item, text))
         if not usable:
             return None
@@ -97,6 +124,7 @@ class PhraseEngine:
         for t in self.address_candidates(profile, moment, user, now) or [""]:
             values = {"tratamento": t, "nome": user.name, "sobrenome": user.surname, **time_variables(now)}
             for item in profile.phrases.get(moment, []):
-                if item.enabled and (text := render(item.text, values)) and text not in out:
+                template = without_address(item.text) if not t and user.gender == "neutro" else item.text
+                if item.enabled and (text := render(template, values)) and text not in out:
                     out.append(text)
         return out

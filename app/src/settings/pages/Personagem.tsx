@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCore } from "../core";
-import { Badge, Button, ConfirmDialog, Page, Row, Section, Segmented, Slider, Switch, TextField } from "../ui";
+import { VoiceTab } from "./VoiceTab";
+import { Badge, Button, ConfirmDialog, Page, Section, Segmented, Slider, Switch, TextField } from "../ui";
 
 interface Item { id: string; text: string; enabled: boolean; origin: "padrao" | "editada" | "usuario"; contexts: string[] }
 interface ListData { items: Item[]; deleted: { id: string; text: string }[] }
@@ -10,7 +11,7 @@ export interface Profile {
   personality: { base_style: string; default_style: string; controls: Record<string, { value: number; default: number }>; extra: string };
   address: { mode: "random" | "fixed" | "context"; fixed: string; items: Item[]; deleted: { id: string; text: string }[] };
   phrases: Record<string, ListData>;
-  voice: { engine: string; voice: string; pitch: number; rate: number; default: { engine: string; voice: string; pitch: number; rate: number } };
+  voice: { engine: string; voice: string; pitch: number; rate: number; description?: string; default: { engine: string; voice: string; pitch: number; rate: number } };
   variables: string[];
 }
 
@@ -192,55 +193,5 @@ function PhrasesTab({ p, mutate }: { p: Profile; mutate: Mutate }) {
         onCancel={() => setConfirm(false)}
         onConfirm={async () => { setConfirm(false); for (const l of all) await mutate("reset_list", { list: l }); }} />}
     </>
-  );
-}
-
-function VoiceTab({ p, mutate }: { p: Profile; mutate: Mutate }) {
-  const { call, notify } = useCore();
-  const [voices, setVoices] = useState<string[]>([]);
-  useEffect(() => void call<{ voices: string[] }>("voices", {}, { quiet: true }).then((d) => d && setVoices(d.voices)), [call]);
-  const v = p.voice;
-  const engine = v.engine;
-  return (
-    <>
-      <Section title="Motor de voz">
-        <div className="engines" role="radiogroup" aria-label="Motor de voz">
-          <EngineCard on={engine === "sapi"} title="Voz do sistema" text="Já vem no computador. Qualidade varia." tag="Local" onPick={() => mutate("set_voice", { engine: "sapi" })} />
-          <EngineCard on={engine === "piper"} title="Piper" text="Vozes neurais que rodam no computador (precisa instalar o Piper)." tag="Local" onPick={() => mutate("set_voice", { engine: "piper" })} />
-          <EngineCard disabled title="Voz por descrição" text="Você descreve o tom e o sotaque e um serviço cria a voz." tag="Nuvem · em breve" />
-          <EngineCard disabled title="Sua própria voz" text="Grave sua voz, com o seu consentimento, para usar neste personagem." tag="Nuvem · em breve" />
-        </div>
-        {engine === "sapi" && (
-          <Row label="Voz" htmlFor="voice-select" hint={voices.length ? undefined : "A lista de vozes aparece com o núcleo real em execução."}>
-            <select id="voice-select" value={v.voice} onChange={(e) => mutate("set_voice", { voice: e.target.value })}>
-              <option value="">Português (Brasil) ou a padrão do sistema</option>
-              {voices.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </Row>
-        )}
-        {engine === "piper" && <TextField label="Caminho do modelo do Piper (.onnx)" value={v.voice} placeholder="C:\vozes\pt_BR-faber-medium.onnx" onCommit={(t) => mutate("set_voice", { voice: t })} />}
-      </Section>
-      <Section title="Tom e velocidade">
-        <Slider label="Tom" value={v.pitch} min={-10} max={10} left="Mais grave" right="Mais agudo" onChange={(n) => mutate("set_voice", { pitch: n })} />
-        <Slider label="Velocidade" value={v.rate} min={-10} max={10} left="Mais devagar" right="Mais rápido" onChange={(n) => mutate("set_voice", { rate: n })} />
-        <p className="muted small">O Fidus não clona vozes de atores nem de outras pessoas. Voz própria só com gravação e consentimento de quem fala.</p>
-        <div className="actions">
-          <Button onClick={async () => {
-            const r = await call<{ spoken: boolean; reason?: string }>("characters", { op: "preview", id: p.id });
-            if (r) notify("info", r.spoken ? "Falando uma amostra…" : (r.reason ?? "Sem voz disponível."));
-          }}>Ouvir amostra</Button>
-          <Button onClick={() => mutate("reset_voice")}>Restaurar voz padrão</Button>
-        </div>
-      </Section>
-      <footer className="tab-foot"><span className="muted small">Salvo automaticamente</span></footer>
-    </>
-  );
-}
-
-function EngineCard({ title, text, tag, on, disabled, onPick }: { title: string; text: string; tag: string; on?: boolean; disabled?: boolean; onPick?: () => void }) {
-  return (
-    <button type="button" role="radio" aria-checked={!!on} disabled={disabled} className={`engine${on ? " on" : ""}`} onClick={onPick}>
-      <strong>{title}</strong><span className="muted small">{text}</span><Badge tone={disabled ? "soon" : "neutral"}>{tag}</Badge>
-    </button>
   );
 }

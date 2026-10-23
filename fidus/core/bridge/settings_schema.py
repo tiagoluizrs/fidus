@@ -47,6 +47,7 @@ SCHEMA: dict[str, Rule] = {
     # --- Você e personagens ---
     "usuario.nome": Rule("str", max_len=60),
     "usuario.sobrenome": Rule("str", max_len=60),
+    "usuario.genero": Rule("choice", choices=("homem", "mulher", "neutro")),  # define "senhor"/"senhora" nos tratamentos
     "personagens.falar_inicio": Rule("bool"),
     "personagens.falar_despedida": Rule("bool"),
     # --- Modelo de IA ---
@@ -159,7 +160,7 @@ def effective(config) -> dict[str, Any]:
         "voz.atalho": v.hotkey, "voz.atalho_ativo": v.hotkey_enabled, "voz.microfone": v.microphone,
         "voz.modelo_whisper": v.whisper_model, "voz.idioma": v.language, "voz.velocidade_voz": v.speech_rate,
         "voz.responder_em_voz": v.speak_replies, "voz.tempo_confirmacao_s": v.confirm_timeout_s,
-        "usuario.nome": config.user.name, "usuario.sobrenome": config.user.surname,
+        "usuario.nome": config.user.name, "usuario.sobrenome": config.user.surname, "usuario.genero": config.user.gender,
         "personagens.falar_inicio": c.speak_start, "personagens.falar_despedida": c.speak_farewell,
         "modelo.provedor": config.provider, "modelo.claude": config.model, "modelo.local": config.local_model,
         "modelo.local_url": config.local_url, "modelo.local_acoes": config.local_actions,

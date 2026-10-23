@@ -152,7 +152,7 @@ def build_voice_loop(config: Config) -> VoiceLoop:
     v = config.voice
     log = ActionLog(config.log_path)
     device = resolve_device(v.microphone, list_devices())
-    tts = TTSManager(v.speech_rate)
+    tts = TTSManager(v.speech_rate, data_dir=config.data_dir)
     stt = Transcriber(config, log)
     recorder = Recorder(device, v.max_record_s)
 

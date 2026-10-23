@@ -21,6 +21,23 @@ SCOPES = {
     "gmail": {"read": [API + "gmail.readonly"], "write": [API + "gmail.readonly", API + "gmail.compose"]},
 }
 TOKEN_URI = "https://oauth2.googleapis.com/token"
+OAUTH_PORT = 8085  # porta fixa do retorno do login quando o navegador não é o do próprio computador (teste no Docker)
+
+
+def validate_client_file(text: str) -> dict:
+    """Confere o credentials.json baixado do Google Cloud (tipo "App para computador") antes de guardar."""
+    try:
+        data = json.loads(text)
+    except ValueError as e:
+        raise NotConnected("Isso não é um arquivo JSON válido. Envie o credentials.json que o Google deixa baixar.") from e
+    if isinstance(data, dict) and "web" in data and "installed" not in data:
+        raise NotConnected("Esse arquivo é de um app do tipo \"Web\". Crie as credenciais do tipo \"App para computador\" (docs/INTEGRACOES.md, passo 1).")
+    inst = data.get("installed") if isinstance(data, dict) else None
+    if not isinstance(inst, dict) or not all(isinstance(inst.get(k), str) and inst[k] for k in ("client_id", "client_secret", "auth_uri", "token_uri")):
+        raise NotConnected("O arquivo não tem os campos esperados (client_id, client_secret...). Baixe de novo o credentials.json do Google Cloud.")
+    if not str(inst["auth_uri"]).startswith("https://accounts.google.com/") or not str(inst["token_uri"]).startswith("https://oauth2.googleapis.com/"):
+        raise NotConnected("O arquivo aponta para endereços que não são do Google. Não vou usá-lo.")
+    return data
 
 
 def secret_name(service: str) -> str:
@@ -39,8 +56,12 @@ def _pack(creds, scopes: list[str]) -> str:
     )
 
 
-def connect(config: Config, service: str, write: bool = False, flow_factory: Callable | None = None) -> list[str]:
-    """Abre o navegador para autorizar e guarda o refresh token no cofre. Devolve os escopos concedidos."""
+def connect(config: Config, service: str, write: bool = False, flow_factory: Callable | None = None,
+            open_url: Callable[[str], None] | None = None) -> list[str]:
+    """Abre o navegador para autorizar e guarda o refresh token no cofre. Devolve os escopos concedidos.
+
+    Com `open_url` (teste no Docker/navegador) o endereço de autorização é entregue à interface, que mostra o link, e o
+    retorno do login chega numa porta fixa (OAUTH_PORT) que o container publica."""
     cred_file = config.google_credentials_path
     if not cred_file.is_file():
         raise NotConnected(
@@ -52,7 +73,18 @@ def connect(config: Config, service: str, write: bool = False, flow_factory: Cal
 
         flow_factory = InstalledAppFlow.from_client_secrets_file
     flow = flow_factory(str(cred_file), scopes)
-    creds = flow.run_local_server(port=0)
+    if open_url is None:
+        creds = flow.run_local_server(port=0)
+    else:
+        import webbrowser
+
+        class _UiBrowser(webbrowser.BaseBrowser):
+            def open(self, url, new=0, autoraise=True):  # noqa: ANN001
+                open_url(url)
+                return True
+
+        webbrowser.register("fidus-ui", None, _UiBrowser("fidus-ui"))
+        creds = flow.run_local_server(port=OAUTH_PORT, host="localhost", bind_addr="0.0.0.0", browser="fidus-ui", timeout_seconds=300)
     if not creds.refresh_token:
         raise NotConnected("O Google não devolveu um token de renovação. Remova o acesso do Fidus na conta Google e tente de novo.")
     vault.set_secret(secret_name(service), _pack(creds, scopes))

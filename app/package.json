@@ -11,6 +11,7 @@
     "start": "npm run build && electron .",
     "start:sim": "npm run build && electron . --simulado",
     "typecheck": "tsc --noEmit",
+    "dev:web": "vite --host 127.0.0.1 --open /dev-settings.html",
     "test": "vitest run",
     "icons": "python3 scripts/make_icons.py",
     "dist": "npm run build && electron-builder --win nsis --x64",

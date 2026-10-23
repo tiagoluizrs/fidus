@@ -24,10 +24,11 @@ class Item:
 
 @dataclass
 class Voice:
-    engine: str = "sapi"  # sapi | piper | descricao
+    engine: str = "sapi"  # sapi | piper | descricao (voz criada por descrição) | propria (voz do próprio usuário)
     voice: str = ""  # parte do nome da voz (vazio = a do sistema); no Piper, o caminho do modelo .onnx
     pitch: int = 0  # -10 a 10
     rate: int = 0  # -10 a 10, somado à velocidade geral
+    description: str = ""  # texto usado para criar a voz por descrição (para mostrar de novo na tela)
 
 
 @dataclass
