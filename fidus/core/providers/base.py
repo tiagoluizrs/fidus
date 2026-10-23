@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Callable
 from typing import Any, Protocol
 
 
@@ -43,3 +44,9 @@ class Response:
 
 class Provider(Protocol):
     def complete(self, system: str, messages: list[Message], tools: list[ToolSpec]) -> Response: ...
+
+    def complete_stream(
+        self, system: str, messages: list[Message], tools: list[ToolSpec], on_text: Callable[[str], None]
+    ) -> Response:
+        """Como `complete`, mas entrega cada trecho de texto a `on_text` assim que chega."""
+        ...

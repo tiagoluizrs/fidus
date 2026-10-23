@@ -23,6 +23,13 @@ class ActionLog:
             "decision": decision,
             "result": result[:MAX_FIELD],
         }
+        self._append(entry)
+
+    def event(self, kind: str, **fields) -> None:
+        """Evento que não é ação de ferramenta (ex.: métricas de latência e memória)."""
+        self._append({"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "type": kind, **fields})
+
+    def _append(self, entry: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")

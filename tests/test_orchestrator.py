@@ -46,7 +46,7 @@ def test_limite_de_chamadas_por_comando(config):
     loop = [Response("", [call(id=str(i), t="x")]) for i in range(10)]
     orch, provider = make(config, loop[:3] + [Response("", [call(id="9", t="x")]), Response("Parei.")])
     assert orch.run("faça muito") == "Parei."
-    executed = [json.loads(l) for l in config.log_path.read_text().splitlines()]
+    executed = [e for e in map(json.loads, config.log_path.read_text().splitlines()) if "decision" in e]
     assert [e["decision"] for e in executed] == ["permitido"] * 3 + ["bloqueado_limite"]
     assert provider.calls[-1]["tools"] == []  # a resposta final é pedida sem ferramentas
 
@@ -68,7 +68,8 @@ def test_acao_de_risco_pede_confirmacao_e_negar_nao_executa(config, monkeypatch)
     orch.run("abre o regedit")
     assert len(asked) == 1 and "abrir_app" in asked[0]
     assert launched == []
-    assert json.loads(config.log_path.read_text().splitlines()[0])["decision"] == "negado"
+    acoes = [e for e in map(json.loads, config.log_path.read_text().splitlines()) if "decision" in e]
+    assert acoes[0]["decision"] == "negado"
 
 
 def test_acao_de_risco_confirmada_executa(config, monkeypatch):
@@ -108,3 +109,17 @@ def test_log_nao_guarda_conteudo_externo(config):
     orch, _ = make(config, [Response("", [call(t="x")]), Response("ok")], tools={"eco": Fonte()})
     orch.run("x")
     assert "segredo do evento" not in config.log_path.read_text()
+
+
+def test_personagem_ativo_vai_para_o_log_e_fica_no_orquestrador(config):
+    orch, _ = make(config, [Response("ok")])
+    orch.run("oi", personagem_ativo="donna")
+    assert orch.personagem_ativo == "donna"
+    ev = [json.loads(l) for l in config.log_path.read_text().splitlines()]
+    assert {"type": "personagem", "personagem": "donna"}.items() <= next(e for e in ev if e.get("type") == "personagem").items()
+
+
+def test_personagem_padrao_e_alfred(config):
+    orch, _ = make(config, [Response("ok")])
+    orch.run("oi")
+    assert orch.personagem_ativo == "alfred"
