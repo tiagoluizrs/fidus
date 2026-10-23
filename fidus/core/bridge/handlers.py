@@ -399,6 +399,17 @@ class Handlers:
         in_vault = vault.get_vault_secret(vault.ANTHROPIC_KEY) is not None
         return {"stored": in_vault, "source": "cofre" if in_vault else ("ambiente" if vault.get_secret(vault.ANTHROPIC_KEY) else "nenhuma")}
 
+    def local_models(self) -> dict:
+        """Modelos já baixados no Ollama (para a tela). Se o Ollama não estiver rodando, diz isso em vez de falhar."""
+        from ..config import DEFAULT_LOCAL_MODEL
+        from ..providers.ollama import OllamaError, list_models
+
+        base = {"url": self.config.local_url, "suggested": DEFAULT_LOCAL_MODEL}
+        try:
+            return {**base, "running": True, "models": list_models(self.config.local_url)}
+        except OllamaError as e:
+            return {**base, "running": False, "models": [], "error": str(e)}
+
     def _refresh_provider_key(self) -> None:
         orch = getattr(getattr(self.loop, "handler", None), "orchestrator", None)
         prov = getattr(orch, "provider", None)

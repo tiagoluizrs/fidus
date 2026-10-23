@@ -75,6 +75,11 @@ class CoreCommands:
         if not isinstance(patch, dict) or not patch:
             raise ValueError("'patch' precisa ser um objeto com chave: valor")
         clean = {k: validate_all(k, v) for k, v in patch.items()}  # valida tudo antes de gravar qualquer coisa
+        if clean.get("modelo.local_acoes_ciente") is False and "modelo.local_acoes" not in clean:
+            clean["modelo.local_acoes"] = False  # tirar a ciência desliga a liberação
+        merged = {**effective(self.config), **clean}
+        if merged["modelo.local_acoes"] and not merged["modelo.local_acoes_ciente"]:
+            raise ValueError("Para liberar ações com o modelo local, marque que você entende os riscos.")
         self._save(clean)
         return {"saved": sorted(clean), "restart_required": sorted(set(clean) & RESTART_REQUIRED)}
 
@@ -91,8 +96,11 @@ class CoreCommands:
         """O que não está só em `config`: o modelo do provedor e a velocidade da voz."""
         loop = self.loop
         orch = getattr(getattr(loop, "handler", None), "orchestrator", None)
-        if orch is not None and hasattr(orch.provider, "model"):
-            orch.provider.model = self.config.model
+        if orch is not None:
+            from ..providers import sync_provider
+
+            sync_provider(orch, self.config)
+        self.state.events.emit("model", **self.state.model_info())  # a tela e o menu mostram quem está respondendo
         tts = getattr(loop, "tts", None)
         if tts is not None and hasattr(tts, "base_rate"):
             tts.base_rate = self.config.voice.speech_rate
@@ -138,6 +146,10 @@ class CoreCommands:
     def cmd_api_key(self, op: str = "status", value: str = ""):
         self.h.loop = self.loop
         return self.h.api_key(op, value)
+
+    def cmd_local_models(self):
+        self.h.loop = self.loop
+        return self.h.local_models()
 
     def cmd_voices(self, engine: str = "sapi"):
         self.h.loop = self.loop

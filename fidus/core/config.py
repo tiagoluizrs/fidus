@@ -11,6 +11,7 @@ from pathlib import Path
 from .paths import default_data_dir, legacy_data_dir, migrate_legacy
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
+DEFAULT_LOCAL_MODEL = "qwen3:8b"
 DEFAULT_MAX_TOOL_CALLS = 8
 
 # Apps que abrem sem confirmação (nome falado -> comando do Windows).
@@ -155,6 +156,11 @@ class AppConfig:
 @dataclass
 class Config:
     model: str = DEFAULT_MODEL
+    provider: str = "claude"  # claude | local (Ollama)
+    local_model: str = DEFAULT_LOCAL_MODEL
+    local_url: str = "http://127.0.0.1:11434"
+    local_actions: bool = False  # liberar ações de escrita com o modelo local (precisa também da ciência dos riscos)
+    local_actions_ack: bool = False
     max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS
     allowed_folders: list[Path] = field(default_factory=list)
     allowed_apps: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_APPS))
@@ -173,6 +179,11 @@ class Config:
     @property
     def debug_audio_dir(self) -> Path:
         return self.data_dir / "debug_audio"
+
+    @property
+    def local_actions_allowed(self) -> bool:
+        """O modelo local só faz ações de escrita se o usuário ligou a opção E marcou que entende os riscos."""
+        return self.local_actions and self.local_actions_ack
 
     @property
     def characters_dir(self) -> Path:
@@ -272,6 +283,11 @@ def _apply_extras(cfg: Config, data: dict) -> None:
     mo = data.get("modelo", {})
     if mo.get("claude") and "CLAUDE_MODEL" not in os.environ:  # a variável de ambiente continua mandando
         cfg.model = str(mo["claude"])
+    cfg.provider = str(mo.get("provedor", cfg.provider))
+    cfg.local_model = str(mo.get("local", cfg.local_model))
+    cfg.local_url = str(mo.get("local_url", cfg.local_url))
+    cfg.local_actions = bool(mo.get("local_acoes", cfg.local_actions))
+    cfg.local_actions_ack = bool(mo.get("local_acoes_ciente", cfg.local_actions_ack))
     c = data.get("personagens", {})
     cfg.characters.speak_start = bool(c.get("falar_inicio", cfg.characters.speak_start))
     cfg.characters.speak_farewell = bool(c.get("falar_despedida", cfg.characters.speak_farewell))
@@ -356,4 +372,6 @@ def apply_live(dst: Config, src: Config) -> None:
         if w.id in fresh:
             w.threshold = fresh[w.id].threshold
     dst.max_tool_calls, dst.model, dst.sensitivity = src.max_tool_calls, src.model, src.sensitivity
+    for name in ("provider", "local_model", "local_url", "local_actions", "local_actions_ack"):
+        setattr(dst, name, getattr(src, name))
     dst.allowed_folders, dst.allowed_apps = src.allowed_folders, src.allowed_apps

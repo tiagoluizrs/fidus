@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { EventEmitter } from "node:events";
+import path from "node:path";
 import { PassThrough } from "node:stream";
 import { CoreProcess } from "../electron/core";
 import { resolveCoreCommand } from "../electron/paths";
@@ -80,11 +81,11 @@ describe("como iniciar o núcleo", () => {
 
   it("desenvolvimento: uv run fidus daemon na raiz do projeto", () => {
     const c = resolveCoreCommand(base);
-    expect(c).toMatchObject({ command: "uv", args: ["run", "fidus", "daemon", "--stdin-watch"], cwd: "/proj" });
+    expect(c).toMatchObject({ command: "uv", args: ["run", "fidus", "daemon", "--stdin-watch"], cwd: path.resolve("/proj") });
   });
   it("empacotado: o executável em resources/core", () => {
-    expect(resolveCoreCommand({ ...base, isPackaged: true, platform: "win32" })).toMatchObject({ command: "/res/core/fidus-core.exe", args: ["daemon", "--stdin-watch"] });
-    expect(resolveCoreCommand({ ...base, isPackaged: true, platform: "linux" }).command).toBe("/res/core/fidus-core");
+    expect(resolveCoreCommand({ ...base, isPackaged: true, platform: "win32" })).toMatchObject({ command: path.join("/res", "core", "fidus-core.exe"), args: ["daemon", "--stdin-watch"] });
+    expect(resolveCoreCommand({ ...base, isPackaged: true, platform: "linux" }).command).toBe(path.join("/res", "core", "fidus-core"));
   });
   it("--simulado e FIDUS_CORE_CMD", () => {
     expect(resolveCoreCommand({ ...base, argv: [...base.argv, "--simulado"] }).args).toContain("--simulado");

@@ -18,6 +18,8 @@ class CoreState:
         self.muted = False
 
     def model_info(self) -> dict:
+        if self.config.provider == "local":
+            return {"provider": "local", "name": self.config.local_model, "where": "Neste computador"}
         return {"provider": "claude", "name": self.config.model, "where": "Nuvem"}
 
     def set_status(self, status: str, message: str = "") -> None:
