@@ -79,6 +79,8 @@ class ListenLoop:
         self.events.put(("wake", act))
 
     def ptt_down(self) -> None:
+        if not self.config.voice.hotkey_enabled:
+            return  # "Aceitar também o atalho" desligado
         if self.manager.muted:
             self.out("Microfone silenciado: o atalho foi ignorado.")
             return

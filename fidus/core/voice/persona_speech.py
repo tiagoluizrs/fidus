@@ -38,6 +38,8 @@ class PersonaSpeaker:
         text = self.persona.phrase(cid, moment, context)
         if not text:
             return None
+        if self.config is not None and not self.config.voice.speak_replies:  # "Responder em voz alta" desligado: nada é falado
+            return text
         self.apply_voice(cid)
         path = self.cache.lookup(cid, text, self.fingerprint()) if (self.cache and moment == "inicio") else None
         if path is not None:

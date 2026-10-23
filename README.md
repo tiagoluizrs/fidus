@@ -2,7 +2,7 @@
 
 Assistente de voz para desktop (Windows), "seu conselheiro de IA". Visão, arquitetura e roteiro em [`PROJETO.md`](PROJETO.md).
 
-**Estado atual: Etapa 5A (núcleo com servidor local, bandeja e anel em Electron)** sobre integrações (4), personagens e memória (3), palavra de ativação (2B), voz (2) e núcleo (1). As telas de Configurações vêm na 5B. Retomar o trabalho: veja `PROGRESSO.md`.
+**Estado atual: Etapa 5B (janela de Configurações)** sobre interface (5A),  integrações (4), personagens e memória (3), palavra de ativação (2B), voz (2) e núcleo (1).  Retomar o trabalho: veja `PROGRESSO.md`.
 
 ## Instalação (Windows 10/11, PowerShell)
 
@@ -472,6 +472,27 @@ O núcleo sozinho, sem interface: `uv run fidus daemon --simulado` ou `uv run fi
 - [ ] Matar o app pelo Gerenciador de Tarefas: o processo do núcleo (Python) **não** fica órfão.
 - [ ] "Pausar por 1 hora" mostra "Chamados pausados até HH:MM" no menu e para os chamados; o atalho continua funcionando.
 - [ ] Anotar a memória e a CPU do Electron em repouso (para o `docs/MEDICOES.md` da etapa 6).
+
+## Configurações (Etapa 5B)
+
+Bandeja > **Configurações** abre uma janela única com oito telas: **Geral** (tema, iniciar com o sistema, ícone da
+bandeja, sensibilidade e espera dos chamados, atalho), **Voz** (voz do sistema, velocidade, microfone, modelo de
+reconhecimento, responder em voz), **Personagem** (controles de personalidade, tratamentos, frases por momento, voz do
+personagem, restaurar padrões), **Modelo de IA** (modelo do Claude, chave da API; Local aparece "em breve"), **Contas**
+(Google, Slack, serviços futuros), **Privacidade** (pastas liberadas, log de ações, exportar/apagar dados),
+**Memória** (lembranças, busca, edição, exportar em Markdown, apagar) e **Sobre** (versão e diagnóstico sem segredos).
+
+- A janela conversa com o núcleo pelo mesmo WebSocket (comandos em `docs/PROTOCOLO.md` 4.1). A maioria das mudanças
+  vale na hora; atalho, microfone e modelo de voz avisam que pedem reiniciar.
+- Ações sem volta (apagar lembrança, memória toda, log, histórico) pedem confirmação na tela e `confirm: true` no núcleo;
+  apagar toda a memória exige digitar APAGAR.
+- A chave da Anthropic colada na tela vai direto para o cofre do Windows e **nunca** volta para a tela.
+- Ver sem núcleo real: `cd app; npm run start:sim` e abrir Configurações (dados de exemplo).
+- Testes: `cd app; npm test` (73+) e `uv run pytest`.
+
+### Checklist manual (Windows, Etapa 5B)
+
+Está em `PROGRESSO.md`, seção "Etapa 5B".
 
 ## Fora do escopo desta etapa
 

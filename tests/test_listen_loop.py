@@ -258,3 +258,12 @@ def test_despedida_encerra_a_conversa_sem_esperar_continuacao(rig):
     rig.wake()
     assert not any("aguardando continuação" in m for m in rig.said)
     assert rig.loop.state is State.SLEEPING
+
+
+def test_atalho_desligado_nas_configuracoes_e_ignorado(rig):
+    rig.config.voice.hotkey_enabled = False
+    rig.loop.ptt_down()
+    assert rig.tts.stops == 0 and rig.manager.state == "passive"
+    rig.config.voice.hotkey_enabled = True
+    rig.loop.ptt_down()
+    assert rig.manager.state == "recording"

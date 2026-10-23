@@ -17,7 +17,7 @@ def build_assistant(config: Config, confirm: Confirmer, provider=None, log: Acti
     memory = get_memory(config)
     persona = PersonaService(config, memory=memory)
     orch = Orchestrator(
-        config, provider or create_provider(config), confirm, log=log or ActionLog(config.log_path), persona=persona, memory=memory
+        config, provider or create_provider(config), confirm, log=log or ActionLog(config.log_path, config), persona=persona, memory=memory
     )
     return orch, persona, memory
 

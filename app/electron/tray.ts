@@ -5,14 +5,24 @@ import type { MenuItem, TrayHandlers } from "./logic";
 import type { Snapshot } from "../src/shared/protocol";
 
 export class AppTray {
-  private tray: Tray;
+  private tray: Tray | null = null;
+  private last: Snapshot | null = null;
 
   constructor(private assets: string, private handlers: TrayHandlers) {
-    this.tray = new Tray(this.icon());
-    this.tray.setToolTip("Fidus");
-    this.tray.on("click", () => this.tray.popUpContextMenu());
-    nativeTheme.on("updated", () => this.tray.setImage(this.icon()));
-    this.update(null);
+    nativeTheme.on("updated", () => this.tray?.setImage(this.icon()));
+    this.setVisible(true);
+  }
+
+  /** "Mostrar o ícone na bandeja": sem o ícone, o app só reabre pelo atalho do programa (segunda instância). */
+  setVisible(visible: boolean): void {
+    if (visible && !this.tray) {
+      this.tray = new Tray(this.icon());
+      this.tray.on("click", () => this.tray?.popUpContextMenu());
+      this.update(this.last);
+    } else if (!visible && this.tray) {
+      this.tray.destroy();
+      this.tray = null;
+    }
   }
 
   private icon() {
@@ -22,12 +32,15 @@ export class AppTray {
   }
 
   update(snapshot: Snapshot | null): void {
+    this.last = snapshot;
+    if (!this.tray) return;
     const template = buildTrayTemplate(snapshot, this.handlers) as MenuItem[];
     this.tray.setContextMenu(Menu.buildFromTemplate(template as Electron.MenuItemConstructorOptions[]));
     this.tray.setToolTip(template[0].label ?? "Fidus");
   }
 
   destroy(): void {
-    this.tray.destroy();
+    this.tray?.destroy();
+    this.tray = null;
   }
 }

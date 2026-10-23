@@ -33,6 +33,8 @@ class VoiceConfig:
     save_debug_audio: bool = False  # desligado: o áudio fica só na memória
     max_record_s: float = 30.0
     min_record_s: float = 0.3  # gravações menores são descartadas (toque acidental)
+    speak_replies: bool = True  # "Responder em voz alta"
+    hotkey_enabled: bool = True  # "Aceitar também o atalho (segurar e falar)"
 
     @property
     def whisper_language(self) -> str:
@@ -100,6 +102,7 @@ class MemoryConfig:
     summarize_after_turns: int = 12  # depois disso a conversa antiga vira um resumo
     keep_turns: int = 6  # turnos recentes mantidos na íntegra
     encrypt: str = "auto"  # auto | sim | nao (SQLCipher)
+    learn: bool = True  # o Fidus pode guardar lembranças sozinho ("Aprender com as conversas")
 
 
 @dataclass
@@ -129,6 +132,25 @@ class LimitsConfig:
 
 
 @dataclass
+class PrivacyConfig:
+    log_actions: bool = True  # registrar o que o Fidus executa
+    log_days: int = 30  # por quanto tempo guardar o log
+    keep_history: bool = True  # guardar o histórico de conversas no computador
+    mic_notice: bool = True  # aviso de microfone ativo no anel
+
+
+@dataclass
+class AppConfig:
+    """Opções da interface (o núcleo só as guarda; quem aplica é o Electron)."""
+
+    theme: str = "sistema"  # sistema | claro | escuro
+    language: str = "pt-BR"
+    start_with_windows: bool = False
+    tray_icon: bool = True
+    ring_idle_s: int = 6
+
+
+@dataclass
 class Config:
     model: str = DEFAULT_MODEL
     max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS
@@ -142,6 +164,9 @@ class Config:
     characters: CharactersConfig = field(default_factory=CharactersConfig)
     accounts: AccountsConfig = field(default_factory=AccountsConfig)
     limits: LimitsConfig = field(default_factory=LimitsConfig)
+    privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
+    app: AppConfig = field(default_factory=AppConfig)
+    sensitivity: int | None = None  # "Sensibilidade" dos chamados (0 a 100); None = usa o limiar de cada palavra
 
     @property
     def debug_audio_dir(self) -> Path:
@@ -213,6 +238,7 @@ def load_config() -> Config:
     cfg.allowed_apps.update({k.lower(): v for k, v in data.get("apps", {}).get("permitidos", {}).items()})
     _apply_voice(cfg.voice, data.get("voz", {}))
     _apply_wake(cfg.wake, data.get("chamados", {}))
+    cfg.sensitivity = data.get("chamados", {}).get("sensibilidade")
     _apply_extras(cfg, data)
     return cfg
 
@@ -227,6 +253,21 @@ def _apply_extras(cfg: Config, data: dict) -> None:
     mc.summarize_after_turns = int(m.get("resumir_apos_turnos", mc.summarize_after_turns))
     mc.keep_turns = int(m.get("turnos_recentes", mc.keep_turns))
     mc.encrypt = str(m.get("criptografar", mc.encrypt)).lower()
+    mc.learn = bool(m.get("aprender", mc.learn))
+    p, pc = data.get("privacidade", {}), cfg.privacy
+    pc.log_actions = bool(p.get("registrar_acoes", pc.log_actions))
+    pc.log_days = int(p.get("guardar_log_dias", pc.log_days))
+    pc.keep_history = bool(p.get("guardar_historico", pc.keep_history))
+    pc.mic_notice = bool(p.get("avisar_microfone", pc.mic_notice))
+    ap, ac2 = data.get("app", {}), cfg.app
+    ac2.theme = str(ap.get("tema", ac2.theme))
+    ac2.language = str(ap.get("idioma", ac2.language))
+    ac2.start_with_windows = bool(ap.get("iniciar_com_windows", ac2.start_with_windows))
+    ac2.tray_icon = bool(ap.get("icone_bandeja", ac2.tray_icon))
+    ac2.ring_idle_s = int(ap.get("janela_inatividade_s", ac2.ring_idle_s))
+    mo = data.get("modelo", {})
+    if mo.get("claude") and "CLAUDE_MODEL" not in os.environ:  # a variável de ambiente continua mandando
+        cfg.model = str(mo["claude"])
     c = data.get("personagens", {})
     cfg.characters.speak_start = bool(c.get("falar_inicio", cfg.characters.speak_start))
     cfg.characters.speak_farewell = bool(c.get("falar_despedida", cfg.characters.speak_farewell))
@@ -253,6 +294,8 @@ def _apply_voice(v: VoiceConfig, d: dict) -> None:
     v.speech_rate = max(-10, min(10, int(d.get("velocidade_voz", v.speech_rate))))
     v.confirm_timeout_s = float(d.get("tempo_confirmacao_s", v.confirm_timeout_s))
     v.save_debug_audio = bool(d.get("salvar_audio_debug", v.save_debug_audio))
+    v.speak_replies = bool(d.get("responder_em_voz", v.speak_replies))
+    v.hotkey_enabled = bool(d.get("atalho_ativo", v.hotkey_enabled))
 
 
 def _apply_wake(w: WakeConfig, d: dict) -> None:
@@ -279,3 +322,34 @@ def _apply_wake(w: WakeConfig, d: dict) -> None:
         word.test_only = bool(wd.get("somente_teste", word.test_only))
         by_id[wid] = word
     w.words = list(by_id.values())
+    sens = d.get("sensibilidade")
+    if sens is not None:
+        apply_sensitivity(w, int(sens), d.get("palavras", {}))
+
+
+def threshold_for_sensitivity(sensitivity: int) -> float:
+    """0 = menos falsos alarmes (limiar 0,8); 60 = padrão (0,5); 100 = acorda mais fácil (0,3)."""
+    return round(0.8 - 0.005 * max(0, min(100, sensitivity)), 3)
+
+
+def apply_sensitivity(w: WakeConfig, sensitivity: int, per_word: dict | None = None) -> None:
+    """Aplica a sensibilidade a todas as palavras que não têm um `limiar` próprio no fidus.toml."""
+    for word in w.words:
+        if "limiar" not in (per_word or {}).get(word.id, {}):
+            word.threshold = threshold_for_sensitivity(sensitivity)
+
+
+def apply_live(dst: Config, src: Config) -> None:
+    """Copia as configurações recém-lidas para o Config em uso, sem reiniciar. As palavras de ativação são
+    atualizadas no lugar (o detector guarda os mesmos objetos), então o limiar novo vale na hora."""
+    for name in ("user", "memory", "characters", "accounts", "limits", "privacy", "app", "voice"):
+        getattr(dst, name).__dict__.update(getattr(src, name).__dict__)
+    keep = dst.wake.words
+    dst.wake.__dict__.update({k: v for k, v in src.wake.__dict__.items() if k != "words"})
+    dst.wake.words = keep
+    fresh = {w.id: w for w in src.wake.words}
+    for w in keep:
+        if w.id in fresh:
+            w.threshold = fresh[w.id].threshold
+    dst.max_tool_calls, dst.model, dst.sensitivity = src.max_tool_calls, src.model, src.sensitivity
+    dst.allowed_folders, dst.allowed_apps = src.allowed_folders, src.allowed_apps

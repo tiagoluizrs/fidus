@@ -65,13 +65,29 @@ export class Windows {
       return;
     }
     const win = new BrowserWindow({
-      width: 1100, height: 760, minWidth: 900, minHeight: 600, show: false, autoHideMenuBar: true,
+      width: Number(process.env.FIDUS_SETTINGS_W) || 1100, height: Number(process.env.FIDUS_SETTINGS_H) || 760, minWidth: 900, minHeight: 600, show: false, autoHideMenuBar: true,
       backgroundColor: this.bg(), title: "Fidus · Configurações", webPreferences: webPreferences(this.preload),
     });
     this.settings = win;
     lockDown(win);
     win.once("ready-to-show", () => win.show());
     win.on("closed", () => (this.settings = null));
+    const tour = process.env.FIDUS_SETTINGS_TOUR; // só para desenvolvimento: percorre as telas e salva uma imagem de cada
+    if (tour && process.env.FIDUS_SCREENSHOT_DIR) {
+      win.webContents.once("did-finish-load", () => {
+        void (async () => {
+          const { writeFileSync } = await import("node:fs");
+          for (const page of tour.split(",")) {
+            if (win.isDestroyed()) return;
+            win.webContents.send("fidus:navigate", page);
+            await new Promise((r) => setTimeout(r, 1800));
+            const img = await win.webContents.capturePage();
+            writeFileSync(path.join(process.env.FIDUS_SCREENSHOT_DIR!, `settings-${page}.png`), img.toPNG());
+          }
+          console.log("[fidus] tour das configurações concluído");
+        })();
+      });
+    }
     void win.loadURL(this.rendererUrl + "settings.html" + (page ? `#${encodeURIComponent(page)}` : ""));
   }
 

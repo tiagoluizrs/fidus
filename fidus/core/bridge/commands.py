@@ -7,13 +7,16 @@ from collections.abc import Callable
 from typing import Any
 
 from .. import settings as settings_io
-from .settings_schema import SCHEMA, InvalidSetting, validate
+from .settings_schema import CLAUDE_MODELS, RESTART_REQUIRED, SCHEMA, InvalidSetting, effective, validate_all
 
 
 class CoreCommands:
     def __init__(self, config, state, loop=None, broker=None, persona=None, on_quit: Callable[[], None] | None = None):
         self.config, self.state, self.loop, self.broker, self.persona = config, state, loop, broker, persona
         self.on_quit = on_quit
+        from .handlers import Handlers
+
+        self.h = Handlers(config, state, persona, loop, save_settings=self._save) if persona else None
 
     def handle(self, name: str, args: dict[str, Any]) -> dict[str, Any] | None:
         fn = getattr(self, f"cmd_{name}", None)
@@ -63,27 +66,39 @@ class CoreCommands:
         return {"default_character": id}
 
     def cmd_get_settings(self):
-        return {"settings": settings_io.read(self.config.settings_path), "schema": sorted(SCHEMA)}
+        return {
+            "settings": settings_io.read(self.config.settings_path), "effective": effective(self.config), "schema": sorted(SCHEMA),
+            "claude_models": list(CLAUDE_MODELS), "restart_required": sorted(RESTART_REQUIRED),
+        }
 
     def cmd_set_settings(self, patch: dict):
         if not isinstance(patch, dict) or not patch:
             raise ValueError("'patch' precisa ser um objeto com chave: valor")
-        clean = {k: validate(k, v) for k, v in patch.items()}  # valida tudo antes de gravar qualquer coisa
+        clean = {k: validate_all(k, v) for k, v in patch.items()}  # valida tudo antes de gravar qualquer coisa
         self._save(clean)
-        return {"saved": sorted(clean)}
+        return {"saved": sorted(clean), "restart_required": sorted(set(clean) & RESTART_REQUIRED)}
 
     def _save(self, clean: dict[str, Any]) -> None:
-        from ..config import load_config
+        from ..config import apply_live, load_config
 
         for k, v in clean.items():
             settings_io.set_value(self.config.settings_path, k, v)
-        fresh = load_config()  # aplica sem reiniciar o que dá para aplicar na hora
-        self.config.wake.default_character = fresh.wake.default_character
-        self.config.wake.beep = fresh.wake.beep
-        self.config.user.name, self.config.user.surname = fresh.user.name, fresh.user.surname
-        self.config.characters.speak_start = fresh.characters.speak_start
-        self.config.characters.speak_farewell = fresh.characters.speak_farewell
+        apply_live(self.config, load_config())  # aplica sem reiniciar o que dá para aplicar na hora
+        self._apply_runtime()
         self.state.events.emit("settings", changed=sorted(clean))
+
+    def _apply_runtime(self) -> None:
+        """O que não está só em `config`: o modelo do provedor e a velocidade da voz."""
+        loop = self.loop
+        orch = getattr(getattr(loop, "handler", None), "orchestrator", None)
+        if orch is not None and hasattr(orch.provider, "model"):
+            orch.provider.model = self.config.model
+        tts = getattr(loop, "tts", None)
+        if tts is not None and hasattr(tts, "base_rate"):
+            tts.base_rate = self.config.voice.speech_rate
+            speaker = getattr(loop, "speaker", None)
+            if speaker is not None:
+                speaker._applied = None  # reaplica a voz (e a velocidade nova) na próxima fala
 
     # ---- confirmação ----
 
@@ -93,6 +108,40 @@ class CoreCommands:
         if not self.broker:
             raise ValueError("Nenhuma confirmação pendente")
         return {"accepted": self.broker.reply(id, answer)}
+
+    # ---- telas de Configurações (operações por domínio) ----
+
+    def _domain(self, name: str, op: str, args: dict):
+        if self.h is None:
+            raise ValueError("Núcleo sem personagens carregados.")
+        self.h.loop = self.loop  # o laço real pode ter sido ligado depois da criação
+        return getattr(self.h, name)(op, **args)
+
+    def cmd_characters(self, op: str = "list", **a):
+        return self._domain("characters", op, a)
+
+    def cmd_memory(self, op: str = "list", **a):
+        return self._domain("memory", op, a)
+
+    def cmd_accounts(self, op: str = "list", **a):
+        return self._domain("accounts", op, a)
+
+    def cmd_privacy(self, op: str = "get", **a):
+        return self._domain("privacy", op, a)
+
+    def cmd_about(self, op: str = "get", **a):
+        return self._domain("about", op, a)
+
+    def cmd_devices(self):
+        return self.h.devices()
+
+    def cmd_api_key(self, op: str = "status", value: str = ""):
+        self.h.loop = self.loop
+        return self.h.api_key(op, value)
+
+    def cmd_voices(self, engine: str = "sapi"):
+        self.h.loop = self.loop
+        return self.h.voices(engine)
 
     # ---- ciclo de vida ----
 
