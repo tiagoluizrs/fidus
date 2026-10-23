@@ -161,6 +161,12 @@ class CoreCommands:
             raise ValueError("Pedidos por texto só existem no modo `fidus daemon --headless` (testes no Docker/navegador).")
         return ask(text, id)
 
+    def cmd_ask_audio(self, pcm: str, id: str | None = None):
+        ask = getattr(self.loop, "ask_audio", None)
+        if ask is None:
+            raise ValueError("A fala pelo navegador só existe no modo `fidus daemon --headless` (testes no Docker/navegador).")
+        return ask(pcm, id)
+
     def cmd_local_models(self, op: str = "list", model: str = ""):
         self.h.loop = self.loop
         return self.h.local_models(op, model)

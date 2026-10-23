@@ -87,7 +87,8 @@ export function reduce(m: AppModel, e: CoreEvent): AppModel {
 }
 
 export function micLabel(mic: MicState): { text: string; tone: "ok" | "off" } {
-  return mic === "muted" || mic === "off" ? { text: "Microfone silenciado", tone: "off" } : { text: "Microfone ativo", tone: "ok" };
+  if (mic === "off") return { text: "Sem microfone neste modo", tone: "off" };
+  return mic === "muted" ? { text: "Microfone silenciado", tone: "off" } : { text: "Microfone ativo", tone: "ok" };
 }
 
 export function modelLabel(character: CharacterInfo | null, model: ModelInfo | null): string {

@@ -50,6 +50,7 @@ services:
       FIDUS_HOME: /data
       FIDUS_WEB_BIND: 0.0.0.0
       OLLAMA_UPSTREAM: ollama:11434  # o Fidus fala com 127.0.0.1:11434 (regra de segurança); a ponte encaminha para o container do Ollama
+      HF_HOME: /data/huggingface  # o modelo do Whisper (baixado na primeira fala) fica guardado entre reinicios
       FIDUS_SECRETS_FILE: /data/secrets.json  # sem o cofre do Windows no container: as chaves coladas na tela ficam aqui
     command: ["bash", "docker/web.sh"]
   chat:
