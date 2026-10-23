@@ -161,11 +161,20 @@ class CoreCommands:
             raise ValueError("Pedidos por texto só existem no modo `fidus daemon --headless` (testes no Docker/navegador).")
         return ask(text, id)
 
-    def cmd_ask_audio(self, pcm: str, id: str | None = None):
+    def cmd_ask_audio(self, pcm: str, id: str | None = None, wake: bool = False):
         ask = getattr(self.loop, "ask_audio", None)
         if ask is None:
             raise ValueError("A fala pelo navegador só existe no modo `fidus daemon --headless` (testes no Docker/navegador).")
-        return ask(pcm, id)
+        return ask(pcm, id, wake is True)
+
+    def cmd_browser_mic(self, on: bool = True):
+        set_mic = getattr(self.loop, "set_browser_mic", None)
+        if set_mic is None:
+            raise ValueError("O microfone do navegador só existe no modo `fidus daemon --headless`.")
+        if not isinstance(on, bool):
+            raise ValueError("'on' precisa ser verdadeiro ou falso")
+        set_mic(on)
+        return {"on": on}
 
     def cmd_local_models(self, op: str = "list", model: str = ""):
         self.h.loop = self.loop

@@ -168,3 +168,75 @@ def test_falha_no_whisper_vira_erro_na_tela(config, monkeypatch, tmp_path):
 def test_modo_navegador_nao_finge_ter_microfone(config, monkeypatch, tmp_path):
     cmds, loop, sink = make(config, [], monkeypatch, tmp_path)
     assert cmds.state.snapshot()["mic"] == "off"
+
+
+# ---------- microfone sempre ligado: só age quando chamam o personagem ----------
+
+
+@pytest.mark.parametrize("fala,esperado", [
+    ("Ei Alfred, que horas são?", ("alfred", "que horas são?")),
+    ("ei alfredo que horas são", ("alfred", "que horas são")),
+    ("Hey Donna, qual é a agenda de hoje", ("donna", "qual é a agenda de hoje")),
+    ("Jarbas, abre o bloco de notas", ("jarbis", "abre o bloco de notas")),
+    ("ei Alfred", ("alfred", "")),
+    ("que horas são agora", (None, "que horas são agora")),
+    ("a gente precisa conversar sobre o alfredo da reunião passada", (None, "a gente precisa conversar sobre o alfredo da reunião passada")),
+], ids=["ei-alfred", "alfredo", "hey-donna", "jarbas", "so-o-nome", "sem-chamado", "nome-longe-do-inicio"])
+def test_reconhece_o_chamado_no_comeco_da_fala(fala, esperado):
+    from fidus.core.bridge.headless import match_wake
+
+    assert match_wake(fala, {"alfred": "Alfred", "donna": "Donna", "jarbis": "Jarbis"}) == esperado
+
+
+def test_microfone_aberto_ignora_o_que_nao_e_um_chamado(config, monkeypatch, tmp_path):
+    cmds, loop, sink = make(config, [], monkeypatch, tmp_path)  # nenhuma resposta: se o modelo fosse chamado, daria erro
+    loop.mic_on = True
+    loop.transcriber = FakeTranscriber("a gente almoça mais tarde")
+    r = cmds.handle("ask_audio", {"pcm": pcm_b64(1.0), "wake": True})
+    assert r["started"] is True
+    assert wait(lambda: loop._busy.acquire(blocking=False))
+    assert not any(t in ("caption", "error") for t, _ in sink.seen)  # nada na tela
+    assert ("state", {"state": "idle", "mic": "passive"}) in sink.seen
+
+
+def test_chamou_e_pediu_na_mesma_fala_responde_como_o_personagem_chamado(config, monkeypatch, tmp_path):
+    cmds, loop, sink = make(config, [Response("São dez horas.")], monkeypatch, tmp_path)
+    loop.mic_on = True
+    loop.transcriber = FakeTranscriber("Ei Donna, que horas são?")
+    cmds.handle("ask_audio", {"pcm": pcm_b64(1.0), "wake": True})
+    assert wait(lambda: ("state", {"state": "idle", "mic": "passive"}) in sink.seen and any(t == "caption" and d["role"] == "assistant" and d["final"] for t, d in sink.seen))
+    assert any(t == "character" and d["id"] == "donna" for t, d in sink.seen)
+    caps = [(d["role"], d["text"]) for t, d in sink.seen if t == "caption" and d["final"] or d.get("role") == "assistant"]
+    assert ("user", "que horas são?") in caps
+
+
+def test_so_o_chamado_responde_com_a_fala_de_inicio_e_abre_a_janela_de_continuacao(config, monkeypatch, tmp_path):
+    cmds, loop, sink = make(config, [Response("Agora são dez horas.")], monkeypatch, tmp_path)
+    loop.mic_on = True
+    loop.transcriber = FakeTranscriber("Ei Alfred")
+    cmds.handle("ask_audio", {"pcm": pcm_b64(1.0), "wake": True})
+    assert wait(lambda: loop._busy.acquire(blocking=False) and (loop._busy.release() or True) and any(t == "caption" and d["role"] == "assistant" for t, d in sink.seen))
+    falas = "".join(d["text"] for t, d in sink.seen if t == "caption" and d["role"] == "assistant")
+    assert falas.strip()  # uma fala de início do Alfred
+    loop.transcriber = FakeTranscriber("que horas são")  # sem chamar o nome: vale, porque a conversa está aberta
+    cmds.handle("ask_audio", {"pcm": pcm_b64(1.0), "wake": True})
+    assert wait(lambda: any(t == "caption" and d["role"] == "user" and d["text"] == "que horas são" for t, d in sink.seen))
+
+
+def test_falas_durante_a_resposta_sao_descartadas_em_silencio_com_o_microfone_aberto(config, monkeypatch, tmp_path):
+    cmds, loop, sink = make(config, [], monkeypatch, tmp_path)
+    loop._busy.acquire()
+    assert cmds.handle("ask_audio", {"pcm": pcm_b64(1.0), "wake": True}) == {"ignored": "ocupado"}
+    with pytest.raises(ValueError, match="Ainda estou"):
+        cmds.handle("ask_audio", {"pcm": pcm_b64(1.0)})  # o botão de falar avisa; o microfone aberto não
+    loop._busy.release()
+
+
+def test_avisar_que_o_microfone_do_navegador_ligou_muda_o_indicador(config, monkeypatch, tmp_path):
+    cmds, loop, sink = make(config, [], monkeypatch, tmp_path)
+    assert cmds.handle("browser_mic", {"on": True}) == {"on": True}
+    assert ("state", {"state": "idle", "mic": "passive"}) in sink.seen
+    cmds.handle("browser_mic", {"on": False})
+    assert ("state", {"state": "idle", "mic": "off"}) in sink.seen
+    with pytest.raises(ValueError):
+        cmds.handle("browser_mic", {"on": "sim"})

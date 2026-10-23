@@ -175,12 +175,12 @@ def test_render_preenche_e_pula_quando_falta_variavel():
 
 def test_frase_com_variavel_sem_valor_e_pulada(store):
     eng = PhraseEngine(random.Random(0))
-    p = store.load("alfred")  # "Pois não, {nome}?" só existe com nome
+    p = store.load("alfred")  # "Diga, {nome}." só existe com nome
     sem_nome = {eng.pick(p, "inicio", UserInfo(), NOW) for _ in range(200)}
-    assert not any("{" in (t or "") or "  " in (t or "") or ", ?" in (t or "") for t in sem_nome)
-    assert "Pois não, ?" not in sem_nome and "Pois não, Ana?" not in sem_nome
+    assert not any("{" in (t or "") or "  " in (t or "") or ", ." in (t or "") for t in sem_nome)
+    assert "Diga, ." not in sem_nome and "Diga, Ana." not in sem_nome
     com_nome = {eng.pick(p, "inicio", UserInfo("Ana"), NOW) for _ in range(200)}
-    assert "Pois não, Ana?" in com_nome
+    assert "Diga, Ana." in com_nome
 
 
 def test_sem_nenhuma_frase_possivel_devolve_none(store):
@@ -195,7 +195,7 @@ def test_frases_desativadas_nao_sao_sorteadas(store):
     for i in p.phrases["concluir"][1:]:
         store.set_enabled("alfred", "concluir", i.id, False)
     eng = PhraseEngine()
-    assert {eng.pick(store.load("alfred"), "concluir", UserInfo(), NOW) for _ in range(20)} == {"Providenciado, senhor."}
+    assert {eng.pick(store.load("alfred"), "concluir", UserInfo(), NOW) for _ in range(20)} == {"Feito, senhor."}
 
 
 def test_modo_de_tratamento_fixo_aleatorio_e_por_contexto(store):
@@ -221,7 +221,7 @@ def test_modo_de_tratamento_fixo_aleatorio_e_por_contexto(store):
 def test_todas_as_falas_possiveis_para_pre_gerar(store):
     eng = PhraseEngine()
     texts = eng.all_renderings(store.load("alfred"), "inicio", UserInfo("Ana"), NOW)
-    assert "Pois não, senhor." in texts and "Pois não, Ana?" in texts and len(texts) == len(set(texts))
+    assert "Claro, senhor." in texts and "Diga, Ana." in texts and len(texts) == len(set(texts))
 
 
 # ---------- tratamento conforme quem fala ----------

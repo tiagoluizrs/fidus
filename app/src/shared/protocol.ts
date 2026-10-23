@@ -82,6 +82,7 @@ export const COMMANDS = [
   "voice_cloud",
   "ask",
   "ask_audio",
+  "browser_mic",
   "simulate",
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];
