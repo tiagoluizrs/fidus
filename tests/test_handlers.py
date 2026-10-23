@@ -675,3 +675,21 @@ def test_escolher_o_gemini_atualiza_provedor_estado_e_lista_de_modelos(cmds, con
     assert "gemini-2.5-flash" in call(cmds, "get_settings")["gemini_models"]
     with pytest.raises(Exception):
         call(cmds, "set_settings", patch={"modelo.gemini": "gpt-5"})
+
+
+def test_gemini_lista_os_modelos_da_chave_e_pede_a_chave_antes(cmds, monkeypatch):
+    from fidus.core.providers import gemini
+
+    FakeVault().install(monkeypatch)
+    with pytest.raises(ValueError, match="Defina a chave"):
+        call(cmds, "api_key", op="models", provider="gemini")
+    call(cmds, "api_key", op="set", value="AQ.Ab8" + "k" * 35, provider="gemini")
+    monkeypatch.setattr(gemini, "list_models", lambda key, *a, **k: ["gemini-3.6-flash", "gemini-2.5-pro"])
+    assert call(cmds, "api_key", op="models", provider="gemini") == {"models": ["gemini-3.6-flash", "gemini-2.5-pro"], "best": "gemini-3.6-flash"}
+
+    def quebra(key, *a, **k):
+        raise gemini.GeminiError("A chave do Gemini não foi aceita.")
+
+    monkeypatch.setattr(gemini, "list_models", quebra)
+    with pytest.raises(ValueError, match="não foi aceita"):
+        call(cmds, "api_key", op="models", provider="gemini")
