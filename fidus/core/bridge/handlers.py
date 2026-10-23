@@ -273,6 +273,8 @@ class Handlers:
                 self.save_settings({"contas.slack.escrita": write})
                 self.emit("accounts", service=service, status="connected", message=f"{info.get('team', '')}")
                 return self._accounts_status()
+            if not self.config.google_credentials_path.is_file():  # antes de abrir qualquer login
+                raise ValueError("Envie primeiro o credentials.json do Google, em \"Credenciais do Google\" (acima, na tela de Contas).")
             self._connect_google(service, write)
             return {"started": True, "message": "Autorize no navegador que vai abrir." if not getattr(self.loop, "headless", False) else "Clique no link de autorização que vai aparecer."}
         if op == "disconnect":
