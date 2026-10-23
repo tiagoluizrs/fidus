@@ -60,6 +60,8 @@ class Handlers:
         self._previews: dict[str, bytes] = {}  # prévias de voz geradas (só na memória)
         self._sample: bytes | None = None  # gravação da própria voz (só na memória; apagada depois de enviada)
         self._recording = False
+        self._oauth_lock = __import__("threading").Lock()
+        self._oauth_pending: dict | None = None  # login do Google em andamento (só um por vez: a porta de retorno é fixa no Docker)
 
     def emit(self, type: str, **data) -> None:
         self.state.events.emit(type, **data)
@@ -302,15 +304,34 @@ class Handlers:
 
     def _connect_google(self, service: str, write: bool) -> None:
         svc = "calendar" if service == "agenda" else "gmail"
+        with self._oauth_lock:
+            pending = self._oauth_pending
+            if pending is not None:
+                if pending["service"] != service:
+                    raise ValueError("Já existe um login do Google em andamento. Conclua-o no navegador ou espere até 5 minutos.")
+                if pending["url"]:
+                    self.emit("open_url", url=pending["url"])  # segundo clique: mostra o mesmo link de novo, sem abrir outro login
+                return
+            self._oauth_pending = state = {"service": service, "url": None}
+
+        def remember(url: str) -> None:
+            state["url"] = url
+            self.emit("open_url", url=url)
 
         def work() -> None:
             try:
-                open_url = (lambda url: self.emit("open_url", url=url)) if getattr(self.loop, "headless", False) else None
-                google_auth.connect(self.config, svc, write, open_url=open_url)
+                headless = getattr(self.loop, "headless", False)
+                google_auth.connect(self.config, svc, write, open_url=remember if headless else None)
                 self.save_settings({("contas.google.agenda_escrita" if service == "agenda" else "contas.google.gmail_rascunhos"): write})
                 self.emit("accounts", service=service, status="connected", message="")
+            except OSError as e:
+                busy = e.errno in (98, 10048)  # porta do retorno do login ocupada
+                self.emit("accounts", service=service, status="error", message="A porta do login do Google está ocupada. Reinicie o Fidus e tente de novo." if busy else str(e))
             except Exception as e:  # falta o credentials.json, o usuário fechou o navegador, etc.
                 self.emit("accounts", service=service, status="error", message=str(e))
+            finally:
+                with self._oauth_lock:
+                    self._oauth_pending = None
 
         threading.Thread(target=work, daemon=True, name="fidus-oauth").start()
 
