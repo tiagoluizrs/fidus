@@ -514,6 +514,23 @@ app\resources-core\fidus-core\fidus-core.exe selftest   # confere as bibliotecas
 - Verificado em Linux: build do núcleo congelado, `selftest`, o app empacotado (`electron-builder --dir`) iniciando o núcleo
   congelado e conectando. O instalador `.exe` e a instalação limpa precisam ser feitos no Windows (checklist no LANCAMENTO).
 
+## Docker (desenvolvimento e testes) e instalador por CI
+
+- **Docker é só para desenvolver/testar em Linux** (pytest, testes do app, núcleo simulado + Electron em tela virtual).
+  Não tem microfone, voz do Windows nem bandeja real, e **não gera o `.exe`**: o Fidus é um app de desktop Windows.
+
+```bash
+docker compose run --rm test   # pytest + typecheck + testes do app
+docker compose run --rm sim    # núcleo simulado + Electron em tela virtual; capturas em ./shots
+docker compose run --rm dev    # shell com o código montado
+```
+
+- **O `.exe` (produção)** sai do GitHub Actions num runner Windows: Actions > "Instalador Windows" > *Run workflow* (ou
+  uma tag `v*`); o `Fidus-Setup-<versão>.exe` fica em *Artifacts*. A mesma coisa à mão: `docs/LANCAMENTO.md`.
+- `CI` roda pytest e os testes do app a cada PR.
+- Estes arquivos (`Dockerfile`, `docker-compose.yml`, workflows) foram escritos sem poder executá-los no ambiente da
+  sessão (sem daemon do Docker, sem runner Windows): a primeira execução pode pedir ajuste.
+
 ## Fora do escopo
 
 Provedor de modelo local (Ollama), Outlook/Teams/Microsoft Agenda, Piper guiado, assinatura de código e MSIX. Ver o roteiro no `PROJETO.md` e as dúvidas em `PROGRESSO.md`.

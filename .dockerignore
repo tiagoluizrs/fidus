@@ -1,0 +1,14 @@
+.git
+.venv
+**/node_modules
+app/dist
+app/dist-electron
+app/release
+app/resources-core
+build
+.env
+fidus.toml
+credentials.json
+token.json
+shots
+__pycache__
