@@ -54,7 +54,9 @@ class ListenLoop:
         out: Callable[[str], None] = print,
         clock: Callable[[], float] = time.perf_counter,
         beep_fn: Callable[[], None] = beep,
+        speaker=None,
     ):
+        self.speaker = speaker  # PersonaSpeaker (opcional)
         self.config, self.manager, self.runner, self.vad = config, manager, runner, vad
         self.handler, self.tts, self.indicator, self.log = handler, tts, indicator, log
         self.out, self.clock, self.beep = out, clock, beep_fn
@@ -149,15 +151,20 @@ class ListenLoop:
             if self.runner:
                 self.runner.flush()
         self._show()
+        if self.speaker and self._ptt_capture is None:
+            self.speaker.flush_pending()  # guarda no cache o que foi falado sem cache
 
     def _on_wake(self, act: Activation) -> None:
         if self.state is not State.SLEEPING or self.manager.muted or self._ptt_capture is not None:
             return
         self.state = State.RECORDING
         self.manager.pause_detection()
+        character = character_for(act.word, self.config.wake.default_character)
+        if self.speaker and self.config.characters.speak_start:
+            self.indicator.show("paused")  # enquanto fala, o microfone não grava nada
+            self.speaker.say_moment(character, "inicio", wait=True)  # fala curta, em cache, na voz do personagem
         capture = self.manager.open_capture(self.config.wake.preroll_call_s)
         opened = self.clock()
-        character = character_for(act.word, self.config.wake.default_character)
         if self.config.wake.beep:
             self.beep()
         self.indicator.show("recording")
@@ -187,9 +194,9 @@ class ListenLoop:
             end = self.clock() - (w.silence_s if reason == "silencio" else 0.0)  # fim real da fala
             self.state = State.PROCESSING
             self.indicator.show("paused")
-            self.handler.handle_audio(to_float32(audio), end, character)
-            if self._abort.is_set() or self.manager.muted:
-                break
+            farewell = self.handler.handle_audio(to_float32(audio), end, character)
+            if farewell or self._abort.is_set() or self.manager.muted:
+                break  # despedida, atalho ou silêncio: encerra a conversa sem esperar continuação
             wait = w.followup_s  # espera uma continuação sem precisar chamar de novo
             self.state = State.FOLLOWUP
             self.indicator.show("recording")

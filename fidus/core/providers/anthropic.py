@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from ..secrets import get_anthropic_key
-from .base import Message, Response, ToolCall, ToolSpec
+from .base import Message, Response, SystemPrompt, ToolCall, ToolSpec
 
 MAX_TOKENS = 1024
 
@@ -33,13 +33,14 @@ class AnthropicProvider:
         kwargs: dict = {
             "model": self.model,
             "max_tokens": MAX_TOKENS,
-            "system": system,
+            "system": _system_blocks(system),
             "messages": [_to_api(m) for m in messages],
         }
         if tools:
             kwargs["tools"] = [
                 {"name": t.name, "description": t.description, "input_schema": t.parameters} for t in tools
             ]
+            kwargs["tools"][-1]["cache_control"] = {"type": "ephemeral"}  # as ferramentas mudam pouco: cache
         return kwargs
 
     def complete(self, system: str, messages: list[Message], tools: list[ToolSpec]) -> Response:
@@ -59,6 +60,18 @@ class AnthropicProvider:
             model=self.model, max_tokens=16, messages=[{"role": "user", "content": "Responda apenas: ok"}]
         )
         return "".join(b.text for b in reply.content if b.type == "text")
+
+
+def _system_blocks(system):
+    """Com a parte estável marcada, a API pode reaproveitar do cache (menos custo e latência). Prompts curtos
+    demais para o cache simplesmente não são cacheados."""
+    if isinstance(system, SystemPrompt) and 0 < system.stable_len < len(system):
+        n = system.stable_len
+        return [
+            {"type": "text", "text": str(system)[:n], "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": str(system)[n:]},
+        ]
+    return str(system)
 
 
 def _to_response(reply) -> Response:
