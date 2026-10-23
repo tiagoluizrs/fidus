@@ -70,6 +70,7 @@ describe("modelo da interface", () => {
   it("rótulos em português", () => {
     expect(micLabel("passive")).toEqual({ text: "Microfone ativo", tone: "ok" });
     expect(micLabel("muted")).toEqual({ text: "Microfone silenciado", tone: "off" });
+    expect(micLabel("off")).toEqual({ text: "Sem microfone neste modo", tone: "off" }); // o núcleo sem áudio não finge ter microfone
     expect(STATE_LABEL.listening).toBe("Ouvindo…");
     expect(STATE_LABEL.thinking).toBe("Pensando…");
     expect(STATE_LABEL.speaking).toBe("Falando…");

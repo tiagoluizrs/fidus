@@ -81,6 +81,7 @@ export const COMMANDS = [
   "piper",
   "voice_cloud",
   "ask",
+  "ask_audio",
   "simulate",
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];
