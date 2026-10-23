@@ -70,7 +70,6 @@
       if (!btnMic) return;
       btnMic.setAttribute("aria-pressed", micOn ? "true" : "false");
       btnMic.textContent = micOn ? "🎙 Microfone ligado" : "🔇 Microfone desligado";
-      btnMic.style.background = micOn ? "#d9f7e4" : "#fff";
       if (hint) hint.textContent = micOn ? "Diga “ei Alfred…”, “ei Donna…” ou “ei Jarbis…”. Ou segure a barra de espaço para falar direto." : "Ligue o microfone para chamar pelo nome, ou segure a barra de espaço para falar.";
     }
 
@@ -169,15 +168,27 @@
     });
 
     addEventListener("DOMContentLoaded", function () {
-      var box = document.createElement("form");
-      box.style.cssText = "position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:99;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:min(780px,94vw);font:14px system-ui";
-      var btn = "padding:10px 14px;border-radius:12px;border:1px solid #888;background:#fff;color:#111;cursor:pointer";
-      box.innerHTML = '<button type="button" id="fidus-mic" aria-pressed="false" style="' + btn + '"></button>' +
-        '<input id="fidus-ask" autocomplete="off" placeholder="…ou digite um pedido" style="flex:1;min-width:200px;padding:10px 14px;border-radius:12px;border:1px solid #888;background:#fff;color:#111">' +
-        '<button style="' + btn + '">Enviar</button>' +
-        '<label style="display:flex;align-items:center;gap:6px;color:#fff;background:#0008;padding:8px 10px;border-radius:12px"><input type="checkbox" id="fidus-falar"' + (speakOn ? " checked" : "") + '> Falar a resposta</label>' +
-        '<button type="button" id="fidus-theme" style="' + btn + '" title="Alternar claro/escuro">◐</button>' +
-        '<div id="fidus-hint" style="width:100%;text-align:center;color:#fff;text-shadow:0 1px 3px #000a;font-size:13px"></div>';
+      var style = document.createElement("style");
+      style.textContent =
+        "#root{height:calc(100% - 118px)!important}" +
+        "#fidus-dock{position:fixed;left:0;right:0;bottom:0;height:118px;box-sizing:border-box;padding:10px 16px;background:var(--bg);border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;z-index:50;font:14px system-ui,sans-serif;color:var(--text)}" +
+        "#fidus-form{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:min(840px,100%)}" +
+        "#fidus-dock button,#fidus-dock input[type=text]{padding:9px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);font:inherit;cursor:pointer}" +
+        "#fidus-dock #fidus-ask{flex:1;min-width:200px;cursor:text}" +
+        "#fidus-dock label{display:flex;align-items:center;gap:6px;color:var(--text-2);padding:0 6px}" +
+        "#fidus-dock button[aria-pressed=true]{border-color:var(--success);background:color-mix(in srgb,var(--success) 16%,var(--card))}" +
+        "#fidus-dock button:focus-visible,#fidus-dock input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}" +
+        "#fidus-hint{color:var(--text-2);font-size:12.5px;text-align:center}";
+      document.head.append(style);
+      var box = document.createElement("div");
+      box.id = "fidus-dock";
+      box.innerHTML = '<form id="fidus-form">' +
+        '<button type="button" id="fidus-mic" aria-pressed="false"></button>' +
+        '<input id="fidus-ask" type="text" autocomplete="off" placeholder="…ou digite um pedido" aria-label="Digite um pedido">' +
+        '<button type="submit">Enviar</button>' +
+        '<label><input type="checkbox" id="fidus-falar"' + (speakOn ? " checked" : "") + '> Falar a resposta</label>' +
+        '<button type="button" id="fidus-theme" title="Alternar claro/escuro" aria-label="Alternar claro/escuro">◐</button>' +
+        '</form><div id="fidus-hint"></div>';
       document.body.append(box);
       btnMic = document.getElementById("fidus-mic"); hint = document.getElementById("fidus-hint"); label();
       btnMic.onclick = function () { void setMic(!micOn); };
@@ -196,7 +207,7 @@
         try { localStorage.setItem("fidus-falar", speakOn ? "1" : "0"); } catch (e) {}
         if (!speakOn && window.speechSynthesis) speechSynthesis.cancel();
       };
-      box.onsubmit = function (e) {
+      document.getElementById("fidus-form").onsubmit = function (e) {
         e.preventDefault();
         var i = document.getElementById("fidus-ask");
         var text = i.value.trim(); if (!text) return;

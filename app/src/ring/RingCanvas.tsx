@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { UiState } from "../shared/protocol";
 import type { Theme } from "../shared/theme";
-import { LAYER_ALPHA, effectiveLevel, ringLayers, ringStops, smoothLevel } from "./ringMath";
+import { effectiveLevel, ringStops, smoothLevel } from "./ringMath";
+import { BUCKETS, BUCKET_ALPHA, STEPS, adaptStride, depthBucket, lighten, orbPoints } from "./orbMath";
 
 interface Props {
   state: UiState;
@@ -13,7 +14,7 @@ interface Props {
   reducedMotion: boolean;
 }
 
-/** Desenha o anel em Canvas. Escuro: fundo preto com brilho. Claro: linhas mais saturadas, sem brilho. */
+/** Esfera de linhas que reage à voz. Escuro: linhas somadas, com brilho nos polos. Claro: linhas saturadas, sem brilho. */
 export function RingCanvas({ state, colors, theme, levelRef, reducedMotion }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const live = useRef({ state, colors, theme, reducedMotion });
@@ -27,6 +28,11 @@ export function RingCanvas({ state, colors, theme, levelRef, reducedMotion }: Pr
     let last = performance.now();
     let level = 0;
     const t0 = last;
+    // qualidade adaptativa: começa no máximo (ou no que a URL pedir, ?q=2) e baixa sozinha se o computador não aguentar
+    const forced = Number(new URLSearchParams(location.search).get("q"));
+    let stride = [1, 2, 4].includes(forced) ? forced : 1;
+    let avgMs = 12;
+    let since = 0;
 
     const frame = (now: number) => {
       const { state, colors, theme, reducedMotion } = live.current;
@@ -41,46 +47,76 @@ export function RingCanvas({ state, colors, theme, levelRef, reducedMotion }: Pr
       level = smoothLevel(level, effectiveLevel(state, levelRef.current, t), dt);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, size, size);
-      draw(ctx, size, ringLayers(t, level, state, reducedMotion), ringStops(colors, theme, state), theme, level);
+      const started = performance.now();
+      draw(ctx, size, orbPoints(t, level, state, reducedMotion, stride), ringStops(colors, theme, state), theme, level, state);
+      avgMs = avgMs * 0.9 + (performance.now() - started) * 0.1;
+      since += dt;
+      if (since > 1.5 && !forced) {
+        stride = adaptStride(stride, avgMs);
+        since = 0;
+      }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
   }, [levelRef]);
 
-  return <canvas ref={ref} className="ring-canvas" role="img" aria-label="Anel de luz reagindo à voz" />;
+  return <canvas ref={ref} className="ring-canvas" role="img" aria-label="Esfera de linhas reagindo à voz" />;
 }
 
-function draw(ctx: CanvasRenderingContext2D, size: number, layers: ReturnType<typeof ringLayers>, stops: string[], theme: Theme, level: number) {
+function draw(ctx: CanvasRenderingContext2D, size: number, pts: Float32Array, stops: string[], theme: Theme, level: number, state: UiState) {
   const c = size / 2;
-  const grad = ctx.createLinearGradient(0, c - c * 0.85, 0, c + c * 0.85);
-  stops.forEach((color, i) => grad.addColorStop(stops.length === 1 ? 0 : i / (stops.length - 1), color));
-  ctx.lineJoin = "round";
-  layers.forEach((pts, l) => {
-    const path = () => {
-      ctx.beginPath();
-      pts.forEach((p, i) => (i ? ctx.lineTo(c + p.x * c, c + p.y * c) : ctx.moveTo(c + p.x * c, c + p.y * c)));
-      ctx.closePath();
-    };
-    ctx.globalAlpha = LAYER_ALPHA[l];
-    ctx.strokeStyle = grad;
-    if (theme === "dark") {
-      // brilho: um traço borrado por baixo e o traço fino por cima
-      ctx.shadowColor = stops[Math.floor(stops.length / 2)];
-      ctx.shadowBlur = 14 + level * 26;
-      ctx.lineWidth = l === 0 ? 3 : 2;
-      path();
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.lineWidth = 1.2;
-      path();
-      ctx.stroke();
-    } else {
-      ctx.shadowBlur = 0; // claro: sem brilho, linhas um pouco mais grossas e saturadas
-      ctx.lineWidth = l === 0 ? 2.4 : 1.6;
-      path();
-      ctx.stroke();
+  const dark = theme === "dark";
+  const top = stops[0];
+  const bottom = stops[stops.length - 1];
+  const mid = stops.length > 2 ? stops[Math.floor(stops.length / 2)] : lighten(top, 0.5);
+  const grad = ctx.createLinearGradient(0, c * 0.24, 0, c * 1.76);
+  grad.addColorStop(0, top);
+  grad.addColorStop(0.5, dark && state !== "muted" ? lighten(mid, 0.6) : mid); // o meio é claro, como na referência
+  grad.addColorStop(1, bottom);
+
+  // um caminho por faixa de profundidade: poucas chamadas de traço, mesmo com milhares de segmentos
+  const paths = Array.from({ length: BUCKETS }, () => new Path2D());
+  const lines = pts.length / (STEPS * 3);
+  for (let m = 0; m < lines; m++) {
+    for (let s = 0; s < STEPS - 1; s++) {
+      const a = (m * STEPS + s) * 3;
+      const b = a + 3;
+      const z = (pts[a + 2] + pts[b + 2]) / 2;
+      const p = paths[depthBucket(z)];
+      p.moveTo(c + pts[a] * c, c + pts[a + 1] * c);
+      p.lineTo(c + pts[b] * c, c + pts[b + 1] * c);
     }
-  });
+  }
+
+  ctx.lineCap = "round";
+  ctx.strokeStyle = grad;
+  if (dark) ctx.globalCompositeOperation = "lighter"; // linhas se somam: o centro e os polos acendem
+  const boost = state === "muted" ? 0.5 : 1 + level * 0.6;
+  for (let b = 0; b < BUCKETS; b++) {
+    const alpha = BUCKET_ALPHA[b] * (dark ? 1 : 1.5) * boost;
+    if (dark && b >= 2) {
+      ctx.globalAlpha = Math.min(1, alpha * 0.28); // halo: o mesmo traço mais grosso e fraco
+      ctx.lineWidth = 3.4;
+      ctx.stroke(paths[b]);
+    }
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.lineWidth = dark ? 0.8 : 1.0;
+    ctx.stroke(paths[b]);
+  }
+
+  if (dark && state !== "muted") {
+    // brilho nos polos (laranja em cima, azul embaixo), mais forte com a voz
+    for (const [y, color] of [[0.34, top], [1.66, bottom]] as const) {
+      const r = c * (0.22 + level * 0.1); // o brilho nunca encosta na borda do canvas (sem corte reto)
+      const g = ctx.createRadialGradient(c, c * y, 0, c, c * y, r);
+      g.addColorStop(0, lighten(color, 0.55));
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.globalAlpha = 0.45 + level * 0.4;
+      ctx.fillStyle = g;
+      ctx.fillRect(c - r, c * y - r, r * 2, r * 2);
+    }
+  }
   ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
 }
