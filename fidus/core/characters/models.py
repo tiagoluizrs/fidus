@@ -57,3 +57,4 @@ class Profile:
     address: list[Item]
     phrases: dict[str, list[Item]]
     voice: Voice
+    customizable: bool = False  # o usuário pode trocar o nome (só o personagem personalizado)

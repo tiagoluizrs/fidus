@@ -55,7 +55,7 @@ def call(c, cmd, /, **args):
 
 def test_lista_e_perfil_completo_com_padroes(cmds):
     lst = call(cmds, "characters", op="list")["characters"]
-    assert [c["id"] for c in lst] == ["alfred", "donna", "jarbis"] and lst[0]["is_default"] and not lst[0]["edited"]
+    assert [c["id"] for c in lst] == ["alfred", "donna", "jarbis", "custom"] and lst[0]["is_default"] and not lst[0]["edited"]
     p = call(cmds, "characters", op="get", id="alfred")
     assert p["personality"]["controls"]["formalidade"] == {"value": 70, "default": 70}
     assert set(p["phrases"]) == {"inicio", "concluir", "confirmar", "erro", "despedida"}
@@ -311,7 +311,7 @@ def test_acoes_sem_volta_exigem_confirmacao_e_apagar_tudo_limpa_tudo(cmds, confi
 
 def test_sobre_e_diagnostico_sem_dados_pessoais(cmds, config):
     a = call(cmds, "about")
-    assert a["version"] == "0.1.0" and a["model"] == "claude-sonnet-5-5" and a["characters"] == ["alfred", "donna", "jarbis"]
+    assert a["version"] == "0.1.0" and a["model"] == "claude-sonnet-5-5" and a["characters"] == ["alfred", "donna", "jarbis", "custom"]
     d = call(cmds, "about", op="diagnostics")["diagnostics"]
     call(cmds, "memory", op="add", text="SEGREDO-PESSOAL")
     d2 = call(cmds, "about", op="diagnostics")["diagnostics"]

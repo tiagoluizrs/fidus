@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import secrets
 from pathlib import Path
 
@@ -26,7 +27,7 @@ class CharacterStore:
 
     def ids(self) -> list[str]:
         ids = sorted(p.stem for p in self.defaults_dir.glob("*.json"))
-        return sorted(ids, key=lambda i: (not self._default(i)["default"], i))  # o padrão primeiro
+        return sorted(ids, key=lambda i: (not self._default(i)["default"], bool(self._default(i).get("custom")), i))  # o padrão primeiro, o personalizado por último
 
     def _default(self, cid: str) -> dict:
         path = self.defaults_dir / f"{cid}.json"
@@ -61,8 +62,11 @@ class CharacterStore:
         )
         addr_d, addr_u = d["address"], u.get("address", {})
         voice = {**d["voice"], **u.get("voice", {})}
+        custom = bool(d.get("custom"))
+        name = str(u.get("name") or d["name"]) if custom else d["name"]
         return Profile(
-            id=d["id"], name=d["name"], call=d["call"], summary=d["summary"], default=d["default"], ring=d["ring"],
+            id=d["id"], name=name, call=f"ei {name}" if custom else d["call"], summary=d["summary"], default=d["default"], ring=d["ring"],
+            customizable=custom,
             personality=personality,
             address_mode=addr_u.get("mode", addr_d["mode"]),
             address_fixed=addr_u.get("fixed", addr_d["fixed"]),
@@ -75,6 +79,15 @@ class CharacterStore:
 
     def load_all(self) -> dict[str, Profile]:
         return {i: self.load(i) for i in self.ids()}
+
+    def set_name(self, cid: str, name: str) -> None:
+        """Nome do personagem personalizado (é com ele que se chama: “ei <nome>”). Os três padrões não mudam de nome."""
+        if not self._default(cid).get("custom"):
+            raise ValueError("Só o personagem personalizado pode mudar de nome.")
+        name = " ".join(name.split())
+        if not (1 <= len(name) <= 24) or not re.fullmatch(r"[\wÀ-ÿ' -]+", name):
+            raise ValueError("Use de 1 a 24 letras, números ou espaços no nome.")
+        self._mutate(cid, lambda u: u.__setitem__("name", name))
 
     def default_id(self) -> str:
         return next(i for i in self.ids() if self._default(i)["default"])

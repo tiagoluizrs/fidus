@@ -30,7 +30,7 @@ SCHEMA: dict[str, Rule] = {
     "app.icone": Rule("choice", choices=("escuro", "claro", "colorido")),  # arte do ícone na bandeja e nas janelas
     "app.janela_inatividade_s": Rule("int", 3, 60),
     # --- Chamados ---
-    "chamados.personagem_padrao": Rule("choice", choices=("alfred", "donna", "jarbis")),
+    "chamados.personagem_padrao": Rule("choice", choices=("alfred", "donna", "jarbis", "custom")),
     "chamados.som_ao_ouvir": Rule("bool"),
     "chamados.modo": Rule("choice", choices=("auto", "voz", "modelo")),  # como o Fidus percebe o "ei Alfred"
     "chamados.sensibilidade": Rule("int", 0, 100),

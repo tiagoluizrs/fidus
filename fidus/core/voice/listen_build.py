@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 
 from ..actionlog import ActionLog
-from ..config import Config
+from ..config import Config, WakeWord
 from .audio_manager import AudioManager
 
 
@@ -56,7 +56,7 @@ def build_listen_loop(config: Config, include_test: bool = False, events=None, b
         runner = SpeechWakeRunner(
             manager, load_vad(wake.vad_threshold), stt,
             lambda: {c: persona_ref["p"].ui_profile(c)["name"] for c in persona_ref["p"].ids()},
-            {w.character: w for w in wake.words}, lambda act: loop_ref["loop"].on_activation(act),
+            {**{c: WakeWord(f"ei_{c}", "", c) for c in persona_ref["p"].ids()}, **{w.character: w for w in wake.words}}, lambda act: loop_ref["loop"].on_activation(act),
             silence_s=0.8,
         )
         print("Chamado por reconhecimento de fala: diga o nome do personagem (ex.: “ei Alfred, que horas são?”).")
