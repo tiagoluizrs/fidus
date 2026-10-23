@@ -107,6 +107,7 @@ export function RingApp() {
       <section className="captions" aria-label="Legendas" aria-live="polite">
         {model.user.text && <p className="caption user">{model.user.text}</p>}
         {model.assistant.text && <p className="caption assistant">{model.assistant.text}</p>}
+        {model.error && <p className="caption error" role="alert">{model.error}</p>}
       </section>
 
       <footer className="hint">
