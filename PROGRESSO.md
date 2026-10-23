@@ -21,8 +21,8 @@ Este arquivo permite **retomar o trabalho em outra sessão**. Detalhes históric
 | 2B | Palavra de ativação (openWakeWord), AudioManager, `listen`, personagens pelo nome | Feita, mergeada (PR #2) |
 | 3 | Personagens e memória | Feita, mergeada (PR #3) |
 | 4 | Integrações (Gmail, Slack, Agenda, keyring) | Feita, mergeada (PR #4) |
-| 5A | Servidor WebSocket, Electron, bandeja e anel | **Feita** (branch `claude/etapa-5a-nucleo-e-anel`) |
-| 5B | Janela de Configurações | Pendente |
+| 5A | Servidor WebSocket, Electron, bandeja e anel | Feita, mergeada (PR #5) |
+| 5B | Janela de Configurações | **Feita** (branch `claude/etapa-5b-configuracoes`) |
 | 6 | Empacotar | Pendente |
 
 ## Etapa 3: personagens e memória
@@ -145,6 +145,44 @@ Este arquivo permite **retomar o trabalho em outra sessão**. Detalhes históric
   (`uv run fidus daemon`) e o encerramento sem processo órfão.
 - Nível de áudio real e latência da interface com o microfone real.
 
+## Etapa 5B: janela de Configurações
+
+**O que foi feito** (README, seção "Configurações"; comandos em `docs/PROTOCOLO.md` 4.1):
+
+- **Núcleo**: `Handlers` com as operações das telas (personagens, memória, contas, privacidade, sobre, vozes,
+  microfones, chave da API), `settings_schema` ampliado (+ `RESTART_REQUIRED`, `effective`), `apply_live` (a maioria das
+  mudanças vale na hora; atalho, microfone e modelo de voz pedem reinício e a tela avisa), log de ações lido pela tela,
+  memória com origem (`usuario`/`aprendida`) e `memoria.aprender`.
+- **App**: janela única com 8 telas (Geral, Voz, Personagem, Modelo de IA, Contas, Privacidade, Memória, Sobre), fiel
+  ao design, temas claro/escuro, teclado e leitor de tela (switch/radiogroup/alertdialog), toasts, captura de atalho.
+- **IPC novo** (só a janela de Configurações; o processo principal confere a origem): escolher pasta/arquivo, salvar
+  texto, abrir pasta, ajustes do microfone (URL fixa `ms-settings:privacy-microphone`), copiar, reiniciar o núcleo.
+- Segurança: ações sem volta exigem `confirm: true`; exportação sem chaves/tokens; a chave da API nunca volta para a tela.
+- Testes: Python 356; app 73+ (telas contra um núcleo de mentira, atalho, funções puras, preload mínimo atualizado e
+  um teste de ponta a ponta contra o núcleo simulado real).
+
+**Mudanças em relação ao PROJETO.md**
+
+- A chave da Anthropic pode ser colada na tela (vai direto ao cofre do Windows). Ver dúvida 18.
+- Modelo local (Ollama) aparece como "em breve" (dúvida 16). Outlook, Teams e Microsoft Agenda também.
+- Alguns controles ficam desabilitados com explicação quando o recurso ainda não existe (ver dúvida 19).
+
+**Pendências de validação no Windows**: vozes SAPI e prévia, lista de microfones, estado da permissão do microfone,
+abrir ajustes do Windows, "iniciar com o Windows", escolha de pasta/arquivo, OAuth do Google, token do Slack, captura
+do atalho (incluindo teclas com a tecla Win), reinício do núcleo pela tela.
+
+### Checklist manual (Windows, Etapa 5B)
+
+- [ ] `cd app; npm start`: bandeja > Configurações abre a janela; cada item do menu abre a tela certa.
+- [ ] Geral: trocar o tema (muda na hora), ligar "Iniciar junto com o sistema" (conferir em Configurações do Windows >
+      Aplicativos > Inicialização), esconder o ícone da bandeja.
+- [ ] Voz: trocar a voz e ouvir a prévia, mudar a velocidade, escolher o microfone; atalho novo pede reinício.
+- [ ] Personagem: editar uma frase, apagar e restaurar, ajustar um controle e conferir que a fala muda.
+- [ ] Contas: conectar o Google (navegador), colar o token do Slack, desconectar.
+- [ ] Privacidade: adicionar/remover pasta, ver o log, exportar os dados (conferir que o zip não tem chaves).
+- [ ] Memória: adicionar, buscar, editar, apagar uma, apagar tudo (digitando APAGAR).
+- [ ] Sobre: copiar o diagnóstico (sem segredos).
+
 ## Dúvidas para refinar quando o usuário acordar
 
 1. **Tratamento padrão neutro:** Alfred usa "senhor" fixo (mordomo). Para tratamento neutro quanto a gênero, melhor
@@ -178,3 +216,7 @@ Este arquivo permite **retomar o trabalho em outra sessão**. Detalhes históric
     faça (adaptador no formato OpenAI, restrito a ferramentas de leitura) depois da etapa 6?
 17. **Logo final:** os ícones atuais são provisórios (gerados por código). Quando tiver o SVG final, é só trocar
     `app/assets/` e rodar o empacotamento.
+18. **Chave da API pela tela:** a tela "Modelo de IA" aceita colar a chave e a grava no cofre do Windows (nunca volta
+    para a tela). O PROJETO só falava em `fidus secrets`. Manter as duas formas?
+19. **Controles desabilitados:** o que ainda não existe no núcleo (Local/Ollama, Outlook/Teams) aparece desabilitado
+    com "em breve", em vez de escondido. Prefere esconder até existir?

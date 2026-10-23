@@ -1,7 +1,8 @@
-import { app, globalShortcut, ipcMain, Menu, nativeTheme, session } from "electron";
+import { app, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeTheme, session, shell, systemPreferences } from "electron";
+import { writeFileSync } from "node:fs";
 import { BridgeClient } from "./bridge";
 import { CoreProcess } from "./core";
-import { ALLOWED_COMMANDS, RingLifecycle, applyEvent } from "./logic";
+import { ALLOWED_COMMANDS, MIC_SETTINGS_URL, RingLifecycle, SETTINGS_ONLY_COMMANDS, applyEvent, planAppSettings, safeFileName } from "./logic";
 import { resolveCoreCommand } from "./paths";
 import { hardenContents, hardenSession } from "./security";
 import { AppTray } from "./tray";
@@ -70,10 +71,60 @@ if (!app.requestSingleInstanceLock()) {
 
     // ---- ponte com a interface (renderers): API mínima, só comandos permitidos e só de páginas do app ----
     ipcMain.handle("fidus:command", (e, name: string, args: Record<string, unknown>) => {
-      if (!windows.isTrusted(e.senderFrame?.url ?? "") || !ALLOWED_COMMANDS.has(name)) {
-        return { type: "reply", id: null, ok: false, error: "comando não permitido" };
-      }
+      const from = windows.fromSender(e.sender);
+      const allowed = windows.isTrusted(e.senderFrame?.url ?? "") && ALLOWED_COMMANDS.has(name) && (from === "settings" || !SETTINGS_ONLY_COMMANDS.has(name));
+      if (!allowed) return { type: "reply", id: null, ok: false, error: "comando não permitido" };
       return command(name, args && typeof args === "object" ? args : {});
+    });
+
+    // ---- ações do sistema, só para a janela de Configurações ----
+    const fromSettings = (e: Electron.IpcMainInvokeEvent) => windows.isTrusted(e.senderFrame?.url ?? "") && windows.fromSender(e.sender) === "settings";
+    ipcMain.handle("fidus:pick-folder", async (e) => {
+      if (!fromSettings(e) || !windows.settings) return null;
+      const r = await dialog.showOpenDialog(windows.settings, { properties: ["openDirectory"] });
+      return r.canceled ? null : (r.filePaths[0] ?? null);
+    });
+    ipcMain.handle("fidus:pick-save-path", async (e, name: string, ext: string) => {
+      if (!fromSettings(e) || !windows.settings) return null;
+      const r = await dialog.showSaveDialog(windows.settings, { defaultPath: safeFileName(String(name)), filters: [{ name: String(ext), extensions: [String(ext).replace(/[^a-z0-9]/gi, "")] }] });
+      return r.canceled ? null : (r.filePath ?? null);
+    });
+    ipcMain.handle("fidus:save-text-file", async (e, name: string, content: string) => {
+      if (!fromSettings(e) || !windows.settings || typeof content !== "string") return false;
+      const r = await dialog.showSaveDialog(windows.settings, { defaultPath: safeFileName(String(name)) });
+      if (r.canceled || !r.filePath) return false;
+      writeFileSync(r.filePath, content, "utf8");
+      return true;
+    });
+    ipcMain.handle("fidus:open-path", async (e, kind: string) => {
+      if (!fromSettings(e)) return false;
+      const reply = await command("privacy", { op: "get" }); // as pastas vêm do núcleo, nunca da página
+      const data = reply.data as { data_dir?: string; log_path?: string } | undefined;
+      if (kind === "data" && data?.data_dir) return (await shell.openPath(data.data_dir)) === "";
+      if (kind === "log" && data?.log_path) {
+        shell.showItemInFolder(data.log_path);
+        return true;
+      }
+      return false;
+    });
+    ipcMain.handle("fidus:open-mic-settings", async (e) => {
+      if (fromSettings(e)) await shell.openExternal(MIC_SETTINGS_URL); // endereço fixo, não vem da página
+    });
+    ipcMain.handle("fidus:mic-status", (e) => {
+      if (!fromSettings(e)) return "unknown";
+      try {
+        return systemPreferences.getMediaAccessStatus("microphone");
+      } catch {
+        return "unknown";
+      }
+    });
+    ipcMain.handle("fidus:restart-core", async (e) => {
+      if (!fromSettings(e)) return;
+      await core?.stop(() => command("quit"));
+      core?.start();
+    });
+    ipcMain.handle("fidus:copy-text", (e, text: string) => {
+      if (fromSettings(e) && typeof text === "string") clipboard.writeText(text.slice(0, 20000));
     });
     ipcMain.handle("fidus:snapshot", (e) => (windows.isTrusted(e.senderFrame?.url ?? "") ? snapshot : null));
     ipcMain.handle("fidus:theme", () => (nativeTheme.shouldUseDarkColors ? "dark" : "light"));
@@ -83,12 +134,25 @@ if (!app.requestSingleInstanceLock()) {
     });
     nativeTheme.on("updated", () => windows.broadcast("fidus:theme-changed", nativeTheme.shouldUseDarkColors ? "dark" : "light"));
 
+    // opções do app (tema, iniciar com o Windows, ícone, tempo do anel) vêm das configurações do núcleo
+    const applySettings = async () => {
+      const r = await command("get_settings");
+      const eff = (r.data as { effective?: Record<string, unknown> } | undefined)?.effective;
+      if (!r.ok || !eff) return;
+      const plan = planAppSettings(eff);
+      if (!process.env.FIDUS_THEME) nativeTheme.themeSource = plan.themeSource;
+      tray?.setVisible(plan.trayVisible);
+      lifecycle.setIdleMs(process.env.FIDUS_RING_IDLE_MS ? IDLE_CLOSE_MS : plan.idleMs);
+      if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: plan.openAtLogin });
+    };
+
     // ---- eventos do núcleo ----
     bridge.on("event", (event: CoreEvent) => {
       snapshot = applyEvent(snapshot, event);
       if (event.type === "state") lifecycle.onState(event.state);
       if (event.type === "confirm") lifecycle.onState("listening"); // uma confirmação sempre precisa ser vista
-      windows.broadcast("fidus:event", event, event.type === "level");
+      windows.broadcast("fidus:event", event);
+      if (event.type === "settings") void applySettings();
       if (event.type !== "level") refreshTray();
     });
     bridge.on("disconnected", () => {
@@ -106,6 +170,8 @@ if (!app.requestSingleInstanceLock()) {
         snapshot = await bridge.connect(info.port, info.token);
         console.log(`[fidus] conectado ao núcleo (protocolo ${info.protocol}), estado: ${snapshot.status}`);
         windows.broadcast("fidus:event", { type: "ready", protocol: info.protocol, snapshot });
+        void applySettings();
+        if (process.env.FIDUS_OPEN_SETTINGS) windows.openSettings(process.env.FIDUS_OPEN_SETTINGS === "1" ? undefined : process.env.FIDUS_OPEN_SETTINGS);
         if (process.env.FIDUS_AUTOPLAY === "1") setTimeout(() => void command("simulate"), 800); // desenvolvimento: encena uma conversa
       } catch (err) {
         console.error("[fidus] não consegui conectar ao núcleo:", err);

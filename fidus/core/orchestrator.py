@@ -39,7 +39,7 @@ class Orchestrator:
         self.provider = provider
         self.confirm = confirm
         self.tools = tools if tools is not None else load_tools()
-        self.log = log or ActionLog(config.log_path)
+        self.log = log or ActionLog(config.log_path, config)
         self.persona = persona  # PersonaService: prompt por personagem; sem ele, usa o prompt único da etapa 1
         self.memory = memory  # MemoryService: histórico persistido e resumos
         self.history: list[Message] = []
@@ -149,7 +149,7 @@ class Orchestrator:
     # ---- histórico persistido e resumo ----
 
     def _persist(self, role: str, text: str) -> None:
-        if self.memory and text:
+        if self.memory and text and self.config.privacy.keep_history:
             try:
                 self.memory.db.add_message(self.session, self.personagem_ativo, role, text)
             except Exception as e:  # o histórico em disco nunca derruba a conversa

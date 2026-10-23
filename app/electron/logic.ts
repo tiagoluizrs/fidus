@@ -165,7 +165,11 @@ export function isTrustedUrl(url: string, rendererDirUrl: string): boolean {
 /** Comandos que a interface pode mandar ao núcleo (o resto é recusado antes de chegar lá). */
 export const ALLOWED_COMMANDS = new Set([
   "get_state", "mute", "pause", "calls", "set_default_character", "confirm_reply", "get_settings", "set_settings", "ping", "simulate",
+  "characters", "memory", "accounts", "privacy", "about", "voices", "devices", "api_key",
 ]);
+
+/** Comandos que só a janela de Configurações pode mandar (o anel só precisa de confirmar, silenciar e afins). */
+export const SETTINGS_ONLY_COMMANDS = new Set(["set_settings", "characters", "memory", "accounts", "privacy", "about", "voices", "devices", "api_key", "get_settings"]);
 // "quit" não está aqui: só a bandeja encerra o núcleo, não uma página.
 
 // ---------------------------------------------------------------- snapshot acompanhando os eventos
@@ -190,4 +194,34 @@ export function applyEvent(s: Snapshot | null, e: CoreEvent): Snapshot | null {
     default:
       return s;
   }
+}
+
+// ---------------------------------------------------------------- opções do app vindas das configurações
+
+export interface AppPlan {
+  themeSource: "system" | "light" | "dark";
+  openAtLogin: boolean;
+  trayVisible: boolean;
+  idleMs: number;
+}
+
+/** Converte os valores em vigor (`effective` do núcleo) no que o Electron aplica na hora. */
+export function planAppSettings(eff: Record<string, unknown>): AppPlan {
+  const tema = eff["app.tema"];
+  const idle = Number(eff["app.janela_inatividade_s"]);
+  return {
+    themeSource: tema === "claro" ? "light" : tema === "escuro" ? "dark" : "system",
+    openAtLogin: eff["app.iniciar_com_windows"] === true,
+    trayVisible: eff["app.icone_bandeja"] !== false,
+    idleMs: Number.isFinite(idle) && idle >= 3 && idle <= 60 ? idle * 1000 : 6000,
+  };
+}
+
+/** Só estes endereços podem ser abertos fora do app (ajustes do Windows para o microfone). */
+export const MIC_SETTINGS_URL = "ms-settings:privacy-microphone";
+
+/** Nome de arquivo seguro sugerido ao usuário (sem pastas nem caracteres proibidos). */
+export function safeFileName(name: string, fallback = "fidus"): string {
+  const cleaned = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/^\.+/, "").slice(0, 80);
+  return cleaned || fallback;
 }

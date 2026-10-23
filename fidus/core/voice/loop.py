@@ -35,6 +35,10 @@ class VoiceLoop:
         self.speaker = speaker  # PersonaSpeaker (opcional): voz e falas do personagem
         self.ui = events or NullEvents()  # interface (opcional): legendas, estado, personagem
 
+    def _speak(self, text: str) -> None:
+        if self.config.voice.speak_replies:  # "Responder em voz alta"
+            self.tts.speak(text)
+
     def handle_audio(self, audio, speech_end: float, personagem: str = "alfred") -> bool:
         """Processa uma gravação. `speech_end` vem de time.perf_counter(). Devolve True se o usuário se despediu
         (o chamador então encerra a conversa em vez de esperar uma continuação)."""
@@ -76,7 +80,7 @@ class VoiceLoop:
             print(chunk, end="", flush=True)
             self.ui.emit("caption", role="assistant", text=chunk, final=False)
             for sentence in splitter.feed(chunk):
-                self.tts.speak(sentence)  # fala frase a frase, sem esperar o fim da resposta
+                self._speak(sentence)  # fala frase a frase, sem esperar o fim da resposta
 
         print("fidus> ", end="", flush=True)
         try:
@@ -86,9 +90,9 @@ class VoiceLoop:
         except Exception as e:
             self.out(f"\nErro: {type(e).__name__}: {e}")
             fala = self.speaker.text_for(personagem, "erro") if self.speaker else ""
-            self.tts.speak(fala or "Desculpe, algo deu errado.")
+            self._speak(fala or "Desculpe, algo deu errado.")
         if (rest := splitter.flush()):
-            self.tts.speak(rest)
+            self._speak(rest)
         print()
         self.ui.emit("caption", role="assistant", text="", final=True)  # fecha a legenda (o texto veio em pedaços)
         self.tts.wait_idle()

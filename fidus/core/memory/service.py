@@ -62,3 +62,15 @@ class MemoryService:
 
     def forget_everything(self) -> dict:
         return {"lembrancas": self.md.delete_all(), "mensagens": self.db.clear_history()}
+
+    def wipe_database(self) -> bool:
+        """Fecha e apaga o arquivo do banco (usado em "apagar tudo", quando a chave de criptografia também é apagada)."""
+        if self._db is not None:
+            try:
+                self._db.close()
+            except Exception:
+                pass
+            self._db = None
+        existed = self.config.db_path.exists()
+        self.config.db_path.unlink(missing_ok=True)
+        return existed

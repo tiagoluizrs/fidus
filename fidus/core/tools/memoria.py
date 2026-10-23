@@ -41,6 +41,10 @@ class Memoria(Tool):
             return Risk.IRREVERSIVEL
         return Risk.ESCRITA
 
+    def precheck(self, args, config) -> None:
+        if args.get("acao") in ("adicionar", "editar") and not config.memory.learn:
+            raise ToolError("O aprendizado automático está desligado (Configurações > Memória). Nada foi guardado.")
+
     def preapproved(self, args, config) -> bool:
         # adicionar/editar só dispensam a confirmação se o usuário não pediu "perguntar antes de guardar"
         return not config.memory.ask_before_saving
@@ -58,7 +62,7 @@ class Memoria(Tool):
                 e = mem.get(str(args.get("id", "")))
                 return _fmt([e]) if e else "Lembrança não encontrada."
             if acao == "adicionar":
-                e = mem.add(args.get("secao") or "perfil", str(args.get("texto", "")), args.get("etiqueta") or None)
+                e = mem.add(args.get("secao") or "perfil", str(args.get("texto", "")), args.get("etiqueta") or None, source="aprendida")
                 return f"Guardado em {e.section} (id {e.id})."
             if acao == "editar":
                 e = mem.edit(str(args.get("id", "")), args.get("texto"), args.get("etiqueta"))

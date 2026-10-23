@@ -55,6 +55,9 @@ e **a conexão continua**. Um comando que lança erro recebe `ok:false` com o mo
 | `model` | `provider`, `name`, `where` | modelo de IA em uso (ex.: `claude`, `claude-sonnet-5-5`, `Nuvem`) |
 | `calls` | `enabled`, `until` (timestamp em segundos ou `null`) | "Escutar chamados" ligado/desligado ou pausado por um tempo |
 | `settings` | `changed`: lista de chaves | configurações foram gravadas |
+| `characters_changed` | | um personagem foi editado, apagado ou mudou o padrão (a tela relê) |
+| `memory_changed` | | a memória mudou (pela tela ou pelo Fidus) |
+| `accounts` | | uma conta foi conectada/desconectada (ex.: fim do login do Google no navegador) |
 | `error` | `message` | erro que a interface pode mostrar |
 
 O `snapshot` do `ready` tem: `status`, `message`, `state`, `mic`, `character` (ativo), `default_character`,
@@ -76,13 +79,38 @@ anel com um envelope sintético no estado `speaking`.
 | `confirm_reply` | `{id, answer: bool}` | responde a uma confirmação pendente; `accepted:false` se o `id` já expirou |
 | `get_settings` | | `settings.json` atual e a lista de chaves permitidas |
 | `set_settings` | `{patch: {"chave.ponto": valor}}` | grava e aplica; **tudo ou nada**: se um valor for inválido, nada é gravado |
+| `characters` | `{op, id, ...}` | personagens (ver 4.1) |
+| `memory` | `{op, ...}` | memória (ver 4.1) |
+| `accounts` | `{op, service, ...}` | contas (ver 4.1) |
+| `privacy` | `{op, ...}` | privacidade (ver 4.1) |
+| `about` | `{op: "info"\|"diagnostics"}` | versão e texto de diagnóstico (sem segredos) |
+| `voices` | | vozes do sistema para a tela de voz |
+| `devices` | | microfones disponíveis |
+| `api_key` | `{op: "status"\|"set"\|"clear", value?}` | chave da Anthropic (ver abaixo) |
 | `ping` | | `{pong:true}` |
 | `quit` | | encerra o núcleo (o processo principal usa ao sair; **as páginas não podem enviá-lo**) |
 | `simulate` | | só no modo `--simulado`: encena uma conversa (desenvolvimento) |
 
 `set_settings` só aceita as chaves da tabela `fidus/core/bridge/settings_schema.py`, com tipo e faixa validados
-(uma chave fora da tabela é recusada). A interface **não** consegue gravar chaves de API: segredos vão pelo
-Gerenciador de Credenciais (`fidus secrets`).
+(uma chave fora da tabela é recusada). `set_settings` devolve `saved` e `restart_required` (chaves que só valem após
+reiniciar o núcleo, como o atalho, o microfone e o modelo de voz); `get_settings` devolve também `effective` (valor em
+uso de cada chave, já com o padrão) e `claude_models`.
+
+A **chave da API** não passa por `set_settings`: o comando `api_key` grava no Gerenciador de Credenciais e **nunca a
+devolve** (só `{stored, source}`); o provedor em uso é atualizado na hora. Tokens do Slack seguem o mesmo caminho
+(`accounts` com `op: "connect"`).
+
+### 4.1 Operações das telas de Configurações
+
+- `characters`: `list`, `get`, `set_control`/`reset_control`, `set_style`, `set_extra`, `reset_personality`,
+  `set_address_mode`, `item_edit`/`item_enable`/`item_delete`/`item_add` (listas `tratamentos`, `inicio`, `concluir`,
+  `confirmar`, `erro`, `despedida`), `restore_deleted`, `reset_list`, `set_voice`/`reset_voice`, `preview`.
+- `memory`: `list` (com `query`), `add`, `edit`, `delete`, `delete_all`, `export` (Markdown).
+- `accounts`: `list`, `connect`, `disconnect`, `channel_add`/`channel_remove` (Slack).
+- `privacy`: `get`, `log`, `clear_history`, `clear_log`, `clear_all`, `export` (zip sem chaves nem tokens).
+
+**Ações sem volta** (`memory` `delete`/`delete_all`, `privacy` `clear_*`) só rodam com `confirm: true` explícito; sem
+isso o núcleo recusa. A tela pede a confirmação (digitar APAGAR para apagar tudo) antes de enviar.
 
 ## 5. Confirmações
 
