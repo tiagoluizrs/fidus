@@ -27,6 +27,7 @@ fidus = "fidus.__main__:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]
+build = ["pyinstaller>=6"]  # só para gerar o fidus-core.exe; não entra no app instalado
 
 [build-system]
 requires = ["hatchling"]
