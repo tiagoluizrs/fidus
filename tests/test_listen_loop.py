@@ -220,3 +220,41 @@ def test_indicador_tem_os_tres_estados_pedidos():
     from fidus.core.voice.indicator import LABELS
 
     assert "ESCUTA PASSIVA" in LABELS["passive"] and "GRAVANDO" in LABELS["recording"] and "SILENCIADO" in LABELS["muted"]
+
+
+# ---------- falas do personagem no laço de escuta (Etapa 3) ----------
+
+
+class Speaker:
+    def __init__(self, manager):
+        self.manager, self.calls, self.pending_flushed = manager, [], 0
+
+    def say_moment(self, character, moment, context=None, wait=False):
+        # a fala de início sai ANTES da gravação abrir (senão o microfone gravaria a própria voz)
+        self.calls.append((character, moment, wait, self.manager.state))
+        return "fala"
+
+    def flush_pending(self):
+        self.pending_flushed += 1
+
+
+def test_fala_de_inicio_sai_antes_de_gravar_na_voz_do_personagem_chamado(rig):
+    rig.loop.speaker = sp = Speaker(rig.manager)
+    rig.wake()
+    assert sp.calls[0] == ("donna", "inicio", True, "paused")  # microfone ainda não gravava
+    assert sp.pending_flushed >= 1  # ao dormir, guarda no cache o que faltava
+
+
+def test_fala_de_inicio_pode_ser_desligada(rig):
+    rig.loop.speaker = sp = Speaker(rig.manager)
+    rig.config.characters.speak_start = False
+    rig.wake()
+    assert sp.calls == []
+
+
+def test_despedida_encerra_a_conversa_sem_esperar_continuacao(rig):
+    rig.handler.handle_audio = lambda audio, end, personagem: True  # o usuário disse "tchau"
+    rig.config.wake.followup_s = 5.0
+    rig.wake()
+    assert not any("aguardando continuação" in m for m in rig.said)
+    assert rig.loop.state is State.SLEEPING

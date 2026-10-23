@@ -68,3 +68,20 @@ ativa = false
 # personagem = "alfred"
 # [chamados.palavras.ei_alfred]
 # ativa = false
+
+# ---------------------------------------------------------------- Etapa 3
+[usuario]
+# Usado nas falas dos personagens ({nome}, {sobrenome}). Sem valor, as frases que dependem deles são puladas.
+nome = ""
+sobrenome = ""
+
+[personagens]
+falar_inicio = true         # fala curta pré-gravada ao ser chamado (ex.: "Pois não, senhor.")
+falar_despedida = true
+
+[memoria]
+perguntar_antes_de_guardar = false   # true: toda lembrança nova pede confirmação
+max_contexto_chars = 1500            # limite do trecho de memória enviado ao modelo por pedido
+resumir_apos_turnos = 12             # conversa mais longa que isso vira um resumo
+turnos_recentes = 6                  # turnos mantidos na íntegra depois de resumir
+criptografar = "auto"                # auto | sim | nao (SQLCipher; a chave fica no Gerenciador de Credenciais)

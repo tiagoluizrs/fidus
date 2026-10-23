@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -87,6 +88,27 @@ class WakeConfig:
 
 
 @dataclass
+class UserConfig:
+    name: str = ""
+    surname: str = ""
+
+
+@dataclass
+class MemoryConfig:
+    ask_before_saving: bool = False  # True: toda lembrança nova pede confirmação
+    max_context_chars: int = 1500  # limite do trecho de memória enviado ao modelo em cada pedido
+    summarize_after_turns: int = 12  # depois disso a conversa antiga vira um resumo
+    keep_turns: int = 6  # turnos recentes mantidos na íntegra
+    encrypt: str = "auto"  # auto | sim | nao (SQLCipher)
+
+
+@dataclass
+class CharactersConfig:
+    speak_start: bool = True  # fala curta pré-gravada ao ser chamado
+    speak_farewell: bool = True
+
+
+@dataclass
 class Config:
     model: str = DEFAULT_MODEL
     max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS
@@ -95,10 +117,33 @@ class Config:
     data_dir: Path = field(default_factory=lambda: Path.home() / ".fidus")
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     wake: WakeConfig = field(default_factory=WakeConfig)
+    user: UserConfig = field(default_factory=UserConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
+    characters: CharactersConfig = field(default_factory=CharactersConfig)
 
     @property
     def debug_audio_dir(self) -> Path:
         return self.data_dir / "debug_audio"
+
+    @property
+    def characters_dir(self) -> Path:
+        return self.data_dir / "characters"
+
+    @property
+    def memory_dir(self) -> Path:
+        return self.data_dir / "memoria"
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "fidus.db"
+
+    @property
+    def speech_cache_dir(self) -> Path:
+        return self.data_dir / "speech_cache"
+
+    @property
+    def settings_path(self) -> Path:
+        return self.data_dir / "settings.json"
 
     @property
     def log_path(self) -> Path:
@@ -119,6 +164,13 @@ def _find_config_file(data_dir: Path) -> Path | None:
     return next((p for p in candidates if p.is_file()), None)
 
 
+def _deep_merge(base: dict, over: dict) -> dict:
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = _deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
 def load_config() -> Config:
     from dotenv import load_dotenv  # só desenvolvimento; em produção a chave vem do keyring
 
@@ -127,17 +179,35 @@ def load_config() -> Config:
         model=os.environ.get("CLAUDE_MODEL", DEFAULT_MODEL),
         data_dir=Path(os.environ.get("FIDUS_HOME", Path.home() / ".fidus")),
     )
+    data: dict = {}
     path = _find_config_file(cfg.data_dir)
-    if path is None:
-        return cfg
-    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    if path is not None:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    if cfg.settings_path.is_file():  # edições feitas pelo próprio Fidus (CLI/interface) valem sobre o fidus.toml
+        data = _deep_merge(data, json.loads(cfg.settings_path.read_text(encoding="utf-8")))
     cfg.max_tool_calls = int(data.get("geral", {}).get("max_chamadas_ferramenta", cfg.max_tool_calls))
     folders = data.get("arquivos", {}).get("pastas_liberadas", [])
     cfg.allowed_folders = [Path(f).expanduser().resolve() for f in folders]
     cfg.allowed_apps.update({k.lower(): v for k, v in data.get("apps", {}).get("permitidos", {}).items()})
     _apply_voice(cfg.voice, data.get("voz", {}))
     _apply_wake(cfg.wake, data.get("chamados", {}))
+    _apply_extras(cfg, data)
     return cfg
+
+
+def _apply_extras(cfg: Config, data: dict) -> None:
+    u = data.get("usuario", {})
+    cfg.user.name = str(u.get("nome", cfg.user.name)).strip()
+    cfg.user.surname = str(u.get("sobrenome", cfg.user.surname)).strip()
+    m, mc = data.get("memoria", {}), cfg.memory
+    mc.ask_before_saving = bool(m.get("perguntar_antes_de_guardar", mc.ask_before_saving))
+    mc.max_context_chars = int(m.get("max_contexto_chars", mc.max_context_chars))
+    mc.summarize_after_turns = int(m.get("resumir_apos_turnos", mc.summarize_after_turns))
+    mc.keep_turns = int(m.get("turnos_recentes", mc.keep_turns))
+    mc.encrypt = str(m.get("criptografar", mc.encrypt)).lower()
+    c = data.get("personagens", {})
+    cfg.characters.speak_start = bool(c.get("falar_inicio", cfg.characters.speak_start))
+    cfg.characters.speak_farewell = bool(c.get("falar_despedida", cfg.characters.speak_farewell))
 
 
 def _apply_voice(v: VoiceConfig, d: dict) -> None:

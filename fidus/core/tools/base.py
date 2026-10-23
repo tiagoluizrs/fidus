@@ -25,6 +25,15 @@ class Tool:
     parameters: dict[str, Any]  # JSON Schema do objeto de argumentos
     risk: Risk
     untrusted: bool = False  # True: a saída é conteúdo externo e vai ao modelo como dado delimitado
+    taints: bool | None = None  # None = segue `untrusted`. Se True, depois de rodar, o comando deixa de ter ações dispensadas de confirmação
+
+    def risk_for(self, args: dict) -> Risk:
+        """Risco desta chamada. Por padrão é o da ferramenta; uma ferramenta com várias ações pode variar."""
+        return self.risk
+
+    @property
+    def is_tainting(self) -> bool:
+        return self.untrusted if self.taints is None else self.taints
 
     def preapproved(self, args: dict, config: Config) -> bool:
         """Só vale para ESCRITA: permite dispensar a confirmação em casos já liberados na configuração."""
