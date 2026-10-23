@@ -37,7 +37,9 @@ if (!app.requestSingleInstanceLock()) {
   let core: CoreProcess | null = null;
   let quitting = false;
 
-  const refreshTray = () => tray?.update(snapshot);
+  let coreProblem: string | null = null; // por que o núcleo não iniciou (aparece na bandeja)
+  let lastLog = "";
+  const refreshTray = () => tray?.update(snapshot, coreProblem);
   const command = (name: string, args: Record<string, unknown> = {}) => bridge.request(name, args);
 
   app.on("second-instance", () => windows.openSettings());
@@ -182,11 +184,15 @@ if (!app.requestSingleInstanceLock()) {
       }
       refreshTray();
     });
+    core.on("log", (line: string) => { if (line.trim()) lastLog = line.trim(); });
+    core.on("ready", () => { coreProblem = null; });
     core.on("restarting", (n: number) => {
+      coreProblem = `O núcleo não iniciou, tentando de novo (${n})${lastLog ? `: ${lastLog.slice(0, 80)}` : ""}`;
       snapshot = snapshot && { ...snapshot, status: "starting", message: `Reiniciando o núcleo (${n})…` };
       refreshTray();
     });
     core.on("failed", () => {
+      coreProblem = `O núcleo não conseguiu iniciar${lastLog ? `: ${lastLog.slice(0, 80)}` : ""}`;
       snapshot = snapshot && { ...snapshot, status: "error", message: "O núcleo parou de responder" };
       refreshTray();
     });

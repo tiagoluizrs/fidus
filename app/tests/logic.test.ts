@@ -123,6 +123,7 @@ describe("menu da bandeja", () => {
     expect(t.find((i) => i.label === "Escutar chamados")!.checked).toBe(false);
     expect(statusText(snap({ status: "error", message: "sem microfone" }))).toBe("Erro: sem microfone");
     expect(statusText(null)).toBe("Iniciando…");
+    expect(statusText(null, Date.now(), "O núcleo não conseguiu iniciar: KeyError")).toBe("O núcleo não conseguiu iniciar: KeyError"); // não fica “Iniciando…” para sempre
   });
   it("antes de o núcleo ficar pronto, os controles ficam desabilitados", () => {
     const t = buildTrayTemplate(null, handlers);

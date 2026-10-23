@@ -110,7 +110,8 @@ export interface TrayHandlers {
   quit(): void;
 }
 
-export function statusText(s: Snapshot | null, now = Date.now()): string {
+export function statusText(s: Snapshot | null, now = Date.now(), problem?: string | null): string {
+  if (problem) return problem; // o núcleo caiu na partida: diz o que houve em vez de ficar “Iniciando…” para sempre
   if (!s) return "Iniciando…";
   if (s.status === "starting") return "Iniciando…";
   if (s.status === "error") return s.message ? `Erro: ${s.message}` : "Erro no núcleo";
@@ -126,11 +127,11 @@ export function statusText(s: Snapshot | null, now = Date.now()): string {
   return names ? `Escutando: ${names}` : "Escutando chamados";
 }
 
-export function buildTrayTemplate(s: Snapshot | null, h: TrayHandlers, now = Date.now()): MenuItem[] {
+export function buildTrayTemplate(s: Snapshot | null, h: TrayHandlers, now = Date.now(), problem?: string | null): MenuItem[] {
   const ready = s?.status === "ready";
   const paused = !!s && !s.calls.enabled && !!s.calls.until && s.calls.until * 1000 > now;
   const items: MenuItem[] = [
-    { label: `Fidus · ${statusText(s, now)}`, enabled: false },
+    { label: `Fidus · ${statusText(s, now, problem)}`, enabled: false },
     { type: "separator" },
     { label: "Personagem padrão", enabled: false },
     ...(s?.characters ?? []).map<MenuItem>((c) => ({
