@@ -651,12 +651,14 @@ def test_erro_ao_baixar_modelo_vira_evento_de_erro(cmds, monkeypatch):
 def test_chave_do_gemini_vai_para_o_cofre_e_so_aceita_o_formato_certo(cmds, monkeypatch):
     fv = FakeVault().install(monkeypatch)
     assert call(cmds, "api_key", provider="gemini") == {"stored": False, "source": "nenhuma"}
-    for ruim in ("sk-ant-" + "x" * 30, "AIzaCurta", "AIza" + "x" * 20 + " " + "y" * 20):
+    for ruim in ("sk-ant-" + "x" * 30, "curta", "x" * 20 + " " + "y" * 20, "x" * 12 + "\n" + "y" * 12, "x" * 450):
         with pytest.raises(ValueError, match="não parece uma chave do Gemini"):
             call(cmds, "api_key", op="set", value=ruim, provider="gemini")
-    r = call(cmds, "api_key", op="set", value="AIza" + "k" * 35, provider="gemini")
+    for formato in ("AIza" + "j" * 35, "AQ.Ab8" + "j" * 40):  # o formato das chaves muda: o prefixo não importa
+        assert call(cmds, "api_key", op="set", value=formato, provider="gemini")["stored"] is True
+    r = call(cmds, "api_key", op="set", value="AQ.Ab8" + "k" * 35, provider="gemini")
     assert r == {"stored": True, "source": "cofre"} and "k" * 35 not in str(r)
-    assert fv.d[vault.GEMINI_KEY].startswith("AIza") and vault.ANTHROPIC_KEY not in fv.d  # não mistura com a da Anthropic
+    assert fv.d[vault.GEMINI_KEY].startswith("AQ.") and vault.ANTHROPIC_KEY not in fv.d  # não mistura com a da Anthropic
     assert call(cmds, "api_key", op="delete", provider="gemini")["stored"] is False
 
 

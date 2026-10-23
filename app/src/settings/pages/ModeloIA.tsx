@@ -78,7 +78,7 @@ export function ModeloIA() {
                 {geminiModels.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </Row>
-            <Row label="Chave do Gemini" hint="Crie grátis em aistudio.google.com > Get API key. A chave começa com AIza.">
+            <Row label="Chave do Gemini" hint="Crie grátis em aistudio.google.com > Get API key e copie a chave inteira.">
               <span className="inline">
                 <Badge tone={gkey?.stored ? "ok" : "neutral"}>{gkey?.stored ? "Guardada no cofre do sistema" : "Não definida"}</Badge>
                 <Button onClick={() => setEditing("gemini")}>{gkey?.stored ? "Alterar" : "Definir"}</Button>
@@ -181,7 +181,7 @@ export function ModeloIA() {
         <Dialog title={editing === "gemini" ? "Chave do Gemini" : "Chave da API da Anthropic"} onClose={() => { setEditing(null); setValue(""); }}>
           <p className="muted">A chave é guardada no Gerenciador de Credenciais do Windows e nunca é mostrada de novo.</p>
           <div className="field">
-            <label htmlFor="api-key" className="row-label">{editing === "gemini" ? "Chave (começa com AIza)" : "Chave (começa com sk-ant-)"}</label>
+            <label htmlFor="api-key" className="row-label">{editing === "gemini" ? "Chave do Gemini" : "Chave (começa com sk-ant-)"}</label>
             <input id="api-key" type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />
           </div>
           <div className="dialog-actions">

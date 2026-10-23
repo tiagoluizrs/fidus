@@ -50,6 +50,9 @@ def _confirmed(args: dict) -> None:
         raise ValueError("Ação sem volta: precisa de confirmação explícita (confirm: true).")
 
 
+_KEY_CHARS = __import__("re").compile(r"[A-Za-z0-9_\-.~+/=]+")
+
+
 class Handlers:
     def __init__(self, config, state, persona, loop=None, save_settings: Callable[[dict], None] | None = None):
         self.config, self.state, self.persona, self.loop = config, state, persona, loop
@@ -457,8 +460,9 @@ class Handlers:
         name = vault.GEMINI_KEY
         if op == "set":
             key = (value or "").strip()
-            if not key.startswith("AIza") or len(key) < 30 or any(c.isspace() for c in key):
-                raise ValueError("Isso não parece uma chave do Gemini (começa com AIza). Crie uma em aistudio.google.com > Get API key.")
+            # O formato das chaves do Google muda com o tempo: só conferimos o básico (tamanho e caracteres de uma chave).
+            if not 20 <= len(key) <= 400 or not _KEY_CHARS.fullmatch(key) or key.startswith("sk-ant-"):
+                raise ValueError("Isso não parece uma chave do Gemini. Copie a chave inteira, sem espaços (aistudio.google.com > Get API key).")
             vault.set_secret(name, key)
         elif op == "delete":
             vault.delete_secret(name)
