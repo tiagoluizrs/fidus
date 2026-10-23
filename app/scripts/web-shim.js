@@ -43,63 +43,115 @@
     copyText: function (t) { return navigator.clipboard.writeText(t); },
   };
 
-  // Só no anel: caixa de texto, microfone do navegador (segure para falar) e resposta em voz
+  // Só no anel: microfone sempre ligado (como no app instalado), caixa de texto e resposta em voz
   if (/ring\.html$/.test(location.pathname)) {
-    var MAX_S = 20, RATE = 16000;
-    var rec = null;
-    var speakOn = true;
-    try { speakOn = localStorage.getItem("fidus-falar") !== "0"; } catch (e) {}
+    var MAX_S = 19, RATE = 16000, BLOCK = 2048;
+    var micOn = true, speakOn = true;
+    try { micOn = localStorage.getItem("fidus-mic") !== "0"; speakOn = localStorage.getItem("fidus-falar") !== "0"; } catch (e) {}
+    var amb = null;      // captura em andamento: { stream, ctx, src, proc }
+    var seg = null;      // fala em andamento: { chunks, total, quiet, wake }
+    var pre = [];        // últimos blocos, para não cortar o começo da frase
+    var loud = 0, floor = 0.01, ptt = false, assistBusy = false, muted = false;
+    var btnMic, hint;
+
     function emit(e) { listeners.forEach(function (cb) { cb(e); }); }
     function b64(int16) {
       var bytes = new Uint8Array(int16.buffer), out = "", step = 0x8000;
       for (var i = 0; i < bytes.length; i += step) out += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
       return btoa(out);
     }
-    async function startRec() {
-      if (rec) return;
+    function resample(f32, from) {
+      if (from === RATE) return f32;
+      var ratio = from / RATE, n = Math.floor(f32.length / ratio), out = new Float32Array(n);
+      for (var i = 0; i < n; i++) { var p = i * ratio, a = Math.floor(p), b = Math.min(a + 1, f32.length - 1); out[i] = f32[a] + (f32[b] - f32[a]) * (p - a); }
+      return out;
+    }
+    function label() {
+      if (!btnMic) return;
+      btnMic.setAttribute("aria-pressed", micOn ? "true" : "false");
+      btnMic.textContent = micOn ? "🎙 Microfone ligado" : "🔇 Microfone desligado";
+      btnMic.style.background = micOn ? "#d9f7e4" : "#fff";
+      if (hint) hint.textContent = micOn ? "Diga “ei Alfred…”, “ei Donna…” ou “ei Jarbis…”. Ou segure a barra de espaço para falar direto." : "Ligue o microfone para chamar pelo nome, ou segure a barra de espaço para falar.";
+    }
+
+    // o que o ring está fazendo: enquanto o assistente pensa/fala, o microfone não capta (evita ouvir a própria voz)
+    listeners.add(function (e) {
+      if (e.type === "state") { assistBusy = e.state === "thinking" || e.state === "speaking"; muted = e.state === "muted"; }
+    });
+
+    async function startMic() {
+      if (amb) return true;
       var stream;
-      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } }); }
-      catch (e) { alert("Não consegui usar o microfone: " + (e && e.message ? e.message : e) + "\nPermita o microfone para este endereço no navegador."); return; }
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+      catch (e) { alert("Não consegui usar o microfone: " + (e && e.message ? e.message : e) + "\nPermita o microfone para este endereço no navegador (cadeado ao lado do endereço)."); return false; }
       var Ctx = window.AudioContext || window.webkitAudioContext;
       var ctx = new Ctx({ sampleRate: RATE });
+      if (ctx.state === "suspended") ctx.resume();
       var src = ctx.createMediaStreamSource(stream);
-      var proc = ctx.createScriptProcessor(4096, 1, 1);
-      var r = { stream: stream, ctx: ctx, src: src, proc: proc, chunks: [], total: 0 };
-      proc.onaudioprocess = function (ev) {
-        var d = ev.inputBuffer.getChannelData(0), sum = 0;
-        r.chunks.push(new Float32Array(d)); r.total += d.length;
-        for (var i = 0; i < d.length; i++) sum += d[i] * d[i];
-        var lvl = Math.min(1, Math.sqrt(sum / d.length) * 6);
-        emit({ type: "level", values: [lvl, lvl * 0.85, lvl * 0.7] });
-        if (r.total >= MAX_S * ctx.sampleRate) stopRec();
-      };
-      src.connect(proc); proc.connect(ctx.destination); // o ScriptProcessor só roda ligado à saída; não copiamos a entrada, então não há eco
-      rec = r;
-      if (window.speechSynthesis) window.speechSynthesis.cancel();
-      emit({ type: "state", state: "listening", mic: "recording" });
-      setBtn(true);
+      var proc = ctx.createScriptProcessor(BLOCK, 1, 1);
+      proc.onaudioprocess = onBlock;
+      src.connect(proc); proc.connect(ctx.destination); // o ScriptProcessor só roda ligado à saída; a entrada não é copiada, então não há eco
+      amb = { stream: stream, ctx: ctx, src: src, proc: proc };
+      return true;
     }
-    function stopRec() {
-      if (!rec) return;
-      var r = rec; rec = null; setBtn(false);
-      r.proc.disconnect(); r.src.disconnect(); r.stream.getTracks().forEach(function (t) { t.stop(); });
-      var rate = r.ctx.sampleRate; r.ctx.close();
-      var all = new Float32Array(r.total), off = 0;
-      r.chunks.forEach(function (c) { all.set(c, off); off += c.length; });
-      if (all.length < 0.4 * rate) { emit({ type: "state", state: "idle", mic: "off" }); return; }
+    function stopMic() {
+      if (!amb) return;
+      var a = amb; amb = null; seg = null; pre = []; loud = 0;
+      a.proc.disconnect(); a.src.disconnect(); a.stream.getTracks().forEach(function (t) { t.stop(); }); a.ctx.close();
+    }
+    function idleState() { emit({ type: "state", state: "idle", mic: micOn ? "passive" : "off" }); }
+
+    function onBlock(ev) {
+      var d = new Float32Array(ev.inputBuffer.getChannelData(0)), sum = 0;
+      for (var i = 0; i < d.length; i++) sum += d[i] * d[i];
+      var rms = Math.sqrt(sum / d.length);
+      var busy = assistBusy || muted || (window.speechSynthesis && speechSynthesis.speaking);
+      if (!seg) {
+        if (busy && !ptt) { pre = []; loud = 0; return; }
+        pre.push(d); if (pre.length > 3) pre.shift();
+        floor = Math.min(0.03, Math.max(0.004, floor * 0.95 + rms * 0.05)); // ruído de fundo
+        var thr = Math.max(0.02, floor * 3.5);
+        loud = rms > thr ? loud + 1 : 0;
+        if (loud >= 2 || ptt) {
+          seg = { chunks: pre.slice(), total: pre.reduce(function (n, c) { return n + c.length; }, 0), quiet: 0, wake: !ptt, thr: thr };
+          if (window.speechSynthesis) speechSynthesis.cancel();
+          emit({ type: "state", state: "listening", mic: "recording" });
+        }
+      } else {
+        seg.chunks.push(d); seg.total += d.length;
+        var lvl = Math.min(1, rms * 6);
+        emit({ type: "level", values: [lvl, lvl * 0.85, lvl * 0.7] });
+        if (!ptt) {
+          seg.quiet = rms < seg.thr * 0.7 ? seg.quiet + 1 : 0;
+          if (seg.quiet >= 7 || seg.total >= MAX_S * amb.ctx.sampleRate) finish();
+        }
+      }
+    }
+    function finish() {
+      if (!seg) return;
+      var s = seg; seg = null; loud = 0; pre = [];
+      var rate = amb ? amb.ctx.sampleRate : RATE;
+      var speechSeconds = (s.total - s.quiet * BLOCK) / rate;
+      var all = new Float32Array(s.total), off = 0;
+      s.chunks.forEach(function (c) { all.set(c, off); off += c.length; });
+      all = resample(all, rate);
+      if (speechSeconds < 0.5) { idleState(); if (!micOn) stopMic(); return; } // ruído curto: descarta
       var pcm = new Int16Array(all.length);
       for (var i = 0; i < all.length; i++) { var v = Math.max(-1, Math.min(1, all[i])); pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff; }
-      emit({ type: "state", state: "thinking", mic: "paused" });
-      post("ask_audio", { pcm: b64(pcm) }).then(function (reply) {
-        if (!reply.ok) { emit({ type: "error", message: reply.error }); emit({ type: "state", state: "idle", mic: "off" }); }
+      if (!s.wake) emit({ type: "state", state: "thinking", mic: "paused" });
+      else idleState(); // microfone aberto: só vira "pensando" se o núcleo reconhecer o chamado
+      post("ask_audio", { pcm: b64(pcm), wake: s.wake }).then(function (reply) {
+        if (!reply.ok) { emit({ type: "error", message: reply.error }); idleState(); }
       });
+      if (!micOn) stopMic();
     }
-    var btnMic;
-    function setBtn(on) {
-      if (!btnMic) return;
-      btnMic.setAttribute("aria-pressed", on ? "true" : "false");
-      btnMic.textContent = on ? "● Gravando… solte para enviar" : "🎤 Segure para falar";
-      btnMic.style.background = on ? "#ffd9d9" : "#fff";
+
+    async function setMic(on) {
+      micOn = on;
+      try { localStorage.setItem("fidus-mic", on ? "1" : "0"); } catch (e) {}
+      if (on) { if (!(await startMic())) micOn = false; } else stopMic();
+      post("browser_mic", { on: micOn });
+      label();
     }
 
     // resposta em voz (só neste modo de teste): usa a voz do navegador
@@ -118,21 +170,27 @@
 
     addEventListener("DOMContentLoaded", function () {
       var box = document.createElement("form");
-      box.style.cssText = "position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:99;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:min(760px,94vw);font:14px system-ui";
+      box.style.cssText = "position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:99;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:min(780px,94vw);font:14px system-ui";
       var btn = "padding:10px 14px;border-radius:12px;border:1px solid #888;background:#fff;color:#111;cursor:pointer";
-      box.innerHTML = '<button type="button" id="fidus-mic" aria-pressed="false" style="' + btn + '">🎤 Segure para falar</button>' +
+      box.innerHTML = '<button type="button" id="fidus-mic" aria-pressed="false" style="' + btn + '"></button>' +
         '<input id="fidus-ask" autocomplete="off" placeholder="…ou digite um pedido" style="flex:1;min-width:200px;padding:10px 14px;border-radius:12px;border:1px solid #888;background:#fff;color:#111">' +
         '<button style="' + btn + '">Enviar</button>' +
         '<label style="display:flex;align-items:center;gap:6px;color:#fff;background:#0008;padding:8px 10px;border-radius:12px"><input type="checkbox" id="fidus-falar"' + (speakOn ? " checked" : "") + '> Falar a resposta</label>' +
-        '<button type="button" id="fidus-theme" style="' + btn + '" title="Alternar claro/escuro">◐</button>';
+        '<button type="button" id="fidus-theme" style="' + btn + '" title="Alternar claro/escuro">◐</button>' +
+        '<div id="fidus-hint" style="width:100%;text-align:center;color:#fff;text-shadow:0 1px 3px #000a;font-size:13px"></div>';
       document.body.append(box);
-      btnMic = document.getElementById("fidus-mic");
-      var down = function (ev) { ev.preventDefault(); void startRec(); }, up = function () { stopRec(); };
-      btnMic.addEventListener("mousedown", down); addEventListener("mouseup", up);
-      btnMic.addEventListener("touchstart", down, { passive: false }); addEventListener("touchend", up);
-      // barra de espaço também segura para falar (quando não está digitando)
-      addEventListener("keydown", function (ev) { if (ev.code === "Space" && !ev.repeat && document.activeElement && document.activeElement.tagName !== "INPUT") { ev.preventDefault(); void startRec(); } });
-      addEventListener("keyup", function (ev) { if (ev.code === "Space") stopRec(); });
+      btnMic = document.getElementById("fidus-mic"); hint = document.getElementById("fidus-hint"); label();
+      btnMic.onclick = function () { void setMic(!micOn); };
+      // o navegador só libera o áudio depois de um clique ou tecla: no primeiro gesto, religa o que estiver suspenso
+      var wake = function () { if (amb && amb.ctx.state === "suspended") amb.ctx.resume(); };
+      addEventListener("pointerdown", wake); addEventListener("keydown", wake);
+      // segurar a barra de espaço = falar direto (sem chamar o nome), com o microfone ligado ou não
+      addEventListener("keydown", async function (ev) {
+        if (ev.code !== "Space" || ev.repeat || (document.activeElement && document.activeElement.tagName === "INPUT")) return;
+        ev.preventDefault(); ptt = true;
+        if (!(await startMic())) ptt = false;
+      });
+      addEventListener("keyup", function (ev) { if (ev.code === "Space" && ptt) { ptt = false; finish(); } });
       document.getElementById("fidus-falar").onchange = function (ev) {
         speakOn = ev.target.checked;
         try { localStorage.setItem("fidus-falar", speakOn ? "1" : "0"); } catch (e) {}
@@ -145,6 +203,7 @@
         post("ask", { text: text }).then(function (r) { if (!r.ok) alert(r.error); }); i.value = "";
       };
       document.getElementById("fidus-theme").onclick = function () { window.__fidusSetTheme(theme === "dark" ? "light" : "dark"); };
+      if (micOn) void setMic(true); // microfone ligado por padrão, como no app instalado
     });
   }
 })();
