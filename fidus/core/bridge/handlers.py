@@ -435,8 +435,10 @@ class Handlers:
         except Exception as e:  # sem PortAudio ou sem microfone
             return {"devices": [], "error": f"{type(e).__name__}"}
 
-    def api_key(self, op: str = "status", value: str = "") -> dict:
-        """Chave da Anthropic. Nunca volta para a tela: só `stored` (guardada ou não) e de onde vem."""
+    def api_key(self, op: str = "status", value: str = "", provider: str = "claude") -> dict:
+        """Chave do provedor (Anthropic ou Gemini). Nunca volta para a tela: só `stored` (guardada ou não) e de onde vem."""
+        if provider == "gemini":
+            return self._gemini_key(op, value)
         if op == "set":
             key = (value or "").strip()
             if not key.startswith("sk-ant-") or len(key) < 20 or any(c.isspace() for c in key):
@@ -450,6 +452,20 @@ class Handlers:
             raise ValueError(f"Operação desconhecida: {op}")
         in_vault = vault.get_vault_secret(vault.ANTHROPIC_KEY) is not None
         return {"stored": in_vault, "source": "cofre" if in_vault else ("ambiente" if vault.get_secret(vault.ANTHROPIC_KEY) else "nenhuma")}
+
+    def _gemini_key(self, op: str, value: str) -> dict:
+        name = vault.GEMINI_KEY
+        if op == "set":
+            key = (value or "").strip()
+            if not key.startswith("AIza") or len(key) < 30 or any(c.isspace() for c in key):
+                raise ValueError("Isso não parece uma chave do Gemini (começa com AIza). Crie uma em aistudio.google.com > Get API key.")
+            vault.set_secret(name, key)
+        elif op == "delete":
+            vault.delete_secret(name)
+        elif op != "status":
+            raise ValueError(f"Operação desconhecida: {op}")
+        in_vault = vault.get_vault_secret(name) is not None
+        return {"stored": in_vault, "source": "cofre" if in_vault else ("ambiente" if vault.get_secret(name) else "nenhuma")}
 
     # ================================================================== voz: Piper (local) e nuvem
 
