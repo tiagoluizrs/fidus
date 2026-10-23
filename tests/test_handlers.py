@@ -487,3 +487,94 @@ def test_lista_de_modelos_locais_sem_ollama_nao_quebra(cmds):
     r = call(cmds, "set_settings", patch={"modelo.local_url": "http://127.0.0.1:9"})
     r = call(cmds, "local_models")
     assert r["running"] is False and r["models"] == [] and r["suggested"]
+
+
+# ---------- voz: Piper e nuvem ----------
+
+
+def test_piper_status_e_voz_desconhecida(cmds):
+    st = call(cmds, "piper")
+    assert st["installed"] is False and [v["id"] for v in st["voices"]][0].startswith("pt_BR-") and st["busy"] is False
+    with pytest.raises(ValueError, match="desconhecida"):
+        call(cmds, "piper", op="download_voice", voice="../x")
+    with pytest.raises(ValueError):
+        call(cmds, "piper", op="zzz")
+
+
+def test_download_em_segundo_plano_avisa_pelos_eventos(cmds, monkeypatch):
+    import time
+
+    from fidus.core.voice import piper_setup
+
+    def fake(self, voice, progress=None):
+        progress and progress(5, 10)
+        self.voices_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(piper_setup.PiperStore, "download_voice", fake)
+    assert call(cmds, "piper", op="download_voice", voice="pt_BR-faber-medium") == {"started": True}
+    for _ in range(100):
+        if any(t == "voice_setup" and d["state"] == "done" for t, d in cmds.sink.seen):
+            break
+        time.sleep(0.02)
+    states = [d["state"] for t, d in cmds.sink.seen if t == "voice_setup"]
+    assert states[-1] == "done" and "progress" in states
+    assert call(cmds, "piper")["busy"] is False
+
+
+def test_chave_do_servico_de_voz_vai_para_o_cofre_e_nunca_volta(cmds, monkeypatch):
+    fv = FakeVault().install(monkeypatch)
+    assert call(cmds, "voice_cloud")["has_key"] is False
+    with pytest.raises(ValueError, match="não parece"):
+        call(cmds, "voice_cloud", op="set_key", value="curta")
+    st = call(cmds, "voice_cloud", op="set_key", value="k" * 32)
+    assert st["has_key"] is True and "k" * 32 not in str(st)
+    assert fv.d.get(vault.ELEVENLABS_KEY) == "k" * 32
+    assert call(cmds, "voice_cloud", op="clear_key")["has_key"] is False
+
+
+def test_clonar_exige_consentimento_e_gravacao(cmds, monkeypatch):
+    FakeVault().install(monkeypatch)
+    with pytest.raises(ValueError, match="consente"):
+        call(cmds, "voice_cloud", op="clone", id="alfred")
+    with pytest.raises(ValueError, match="Grave a sua voz"):
+        call(cmds, "voice_cloud", op="clone", id="alfred", consent=True)
+    with pytest.raises(ValueError, match="núcleo real"):
+        call(cmds, "voice_cloud", op="record_sample")
+
+
+def test_criar_voz_por_descricao_salva_no_personagem_e_apagar_volta_ao_padrao(cmds, monkeypatch):
+    FakeVault().install(monkeypatch)
+    calls = []
+
+    class Eleven:
+        def design_previews(self, d):
+            calls.append(("design", d))
+            return [{"id": "g1", "wav": b"RIFFxxxx"}]
+
+        def create_voice(self, name, desc, gid):
+            calls.append(("create", name, gid))
+            return "voz123"
+
+        def delete_voice(self, vid):
+            calls.append(("delete", vid))
+
+    monkeypatch.setattr(cmds.h, "_eleven", lambda: Eleven())
+    r = call(cmds, "voice_cloud", op="design_preview", description="Masculina, grave e calma, sotaque britânico.")
+    assert r["previews"] == [{"id": "g1"}]
+    with pytest.raises(ValueError, match="expirou"):
+        call(cmds, "voice_cloud", op="save_preview", id="alfred", preview="outra", description="x")
+    call(cmds, "voice_cloud", op="save_preview", id="alfred", preview="g1", description="Masculina, grave")
+    v = call(cmds, "characters", op="get", id="alfred")["voice"]
+    assert (v["engine"], v["voice"], v["description"]) == ("descricao", "voz123", "Masculina, grave")
+    call(cmds, "voice_cloud", op="delete_voice", id="alfred")
+    assert ("delete", "voz123") in calls
+    assert call(cmds, "characters", op="get", id="alfred")["voice"]["engine"] == "sapi"
+    with pytest.raises(ValueError, match="desconhecido"):
+        call(cmds, "voice_cloud", op="delete_voice", id="naoexiste")
+
+
+def test_motores_de_voz_aceitos_incluem_a_voz_propria(cmds):
+    call(cmds, "characters", op="set_voice", id="donna", engine="propria", voice="v1")
+    assert call(cmds, "characters", op="get", id="donna")["voice"]["engine"] == "propria"
+    with pytest.raises(ValueError):
+        call(cmds, "characters", op="set_voice", id="donna", engine="outro")

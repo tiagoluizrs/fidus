@@ -514,6 +514,25 @@ app\resources-core\fidus-core\fidus-core.exe selftest   # confere as bibliotecas
 - Verificado em Linux: build do núcleo congelado, `selftest`, o app empacotado (`electron-builder --dir`) iniciando o núcleo
   congelado e conectando. O instalador `.exe` e a instalação limpa precisam ser feitos no Windows (checklist no LANCAMENTO).
 
+## Vozes: Piper (local) e nuvem
+
+Em Configurações > Personagem > **Voz** cada personagem escolhe entre quatro motores:
+
+| Motor | Onde roda | Como usar |
+| --- | --- | --- |
+| **Voz do sistema** | Local | Já vem no Windows. |
+| **Piper** | Local, grátis | Botão **Instalar o Piper** (22 MB do GitHub) e **Baixar** uma voz em português (63 MB, do Hugging Face). Tudo conferido por SHA-256; só HTTPS. Testado de verdade: a geração leva ~0,1 s para uma frase. |
+| **Voz por descrição** | Nuvem (ElevenLabs) | Você descreve a voz, gera prévias, ouve e escolhe uma. |
+| **Sua própria voz** | Nuvem (ElevenLabs) | Marca o consentimento, grava ~30 s lendo um texto e o serviço cria a voz. Só a **sua** voz. |
+
+- **Chave de API:** cada pessoa cola a **própria** chave do ElevenLabs na tela (vai para o cofre do Windows e nunca volta). A conta,
+  a cota e a voz clonada ficam com ela; há plano grátis (confira os limites na página do serviço).
+- **LGPD:** nas vozes da nuvem, cada frase falada (e, na voz própria, a gravação) sai do computador. A tela avisa antes.
+  "Apagar esta voz do serviço" remove a voz da conta do serviço. A gravação fica só na memória e é descartada depois de enviada.
+- **Não validado com uma conta real do ElevenLabs** (os testes usam um servidor falso; os endpoints foram conferidos na
+  documentação oficial). Se o seu plano não permitir criar vozes ou clonar, a tela mostra a mensagem do serviço.
+- As vozes do Piper do catálogo são masculinas (faber, cadu, jeff); o Piper também aceita outros modelos `.onnx`.
+
 ## Modelo local (Ollama)
 
 Em Configurações > Modelo de IA, escolha **Local** para usar o [Ollama](https://ollama.com) neste computador: nada do seu

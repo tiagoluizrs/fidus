@@ -150,3 +150,57 @@ describe("tela Modelo de IA (Ollama)", () => {
     expect(screen.getByText(/ollama pull qwen3:8b/)).toBeInTheDocument();
   });
 });
+
+describe("aba Voz do personagem", () => {
+  const openVoice = async (init: Parameters<typeof installFakeCore>[0] = {}) => {
+    const f = installFakeCore(init);
+    const user = await open("Personagem");
+    await user.click(await screen.findByRole("tab", { name: "Voz" }));
+    return { f, user };
+  };
+
+  it("mostra as quatro opções de voz", async () => {
+    await openVoice();
+    for (const n of ["Voz do sistema", "Piper", "Voz por descrição", "Sua própria voz"]) expect(await screen.findByRole("radio", { name: new RegExp(n) })).toBeInTheDocument();
+  });
+
+  it("Piper: instala o programa, baixa uma voz e escolhe", async () => {
+    const { f, user } = await openVoice();
+    await user.click(screen.getByRole("radio", { name: /Piper/ }));
+    await user.click(await screen.findByRole("button", { name: "Instalar o Piper" }));
+    await waitFor(() => expect(sent(f.calls, "piper", "install")).toHaveLength(1));
+    await user.click(await screen.findByRole("button", { name: "Baixar a voz Faber" }));
+    await waitFor(() => expect(sent(f.calls, "piper", "download_voice")[0][1].voice).toBe("pt_BR-faber-medium"));
+    const radio = await screen.findByRole("radio", { name: /Faber/ });
+    await waitFor(() => expect(radio).toBeEnabled());
+    await user.click(radio);
+    await waitFor(() => expect(f.profiles.alfred.voice).toMatchObject({ engine: "piper", voice: "pt_BR-faber-medium" }));
+  });
+
+  it("voz por descrição: sem chave não gera; com a chave gera a prévia e usa; avisa que usa a internet", async () => {
+    const { f, user } = await openVoice();
+    await user.click(screen.getByRole("radio", { name: /Voz por descrição/ }));
+    expect(await screen.findByText(/Esta opção usa a internet/)).toBeInTheDocument();
+    const desc = screen.getByLabelText(/Descreva a voz do Alfred/);
+    await user.type(desc, "Masculina, grave e calma, sotaque britânico.");
+    expect(screen.getByRole("button", { name: "Gerar prévia" })).toBeDisabled(); // sem chave
+    await user.click(screen.getByRole("button", { name: "Definir" }));
+    await user.type(screen.getByLabelText("Chave de API"), "k".repeat(30));
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Gerar prévia" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Gerar prévia" }));
+    await user.click(await screen.findByRole("button", { name: "Usar a prévia 2" }));
+    await waitFor(() => expect(f.profiles.alfred.voice).toMatchObject({ engine: "descricao", voice: "voz123" }));
+    expect(JSON.stringify(f.calls)).not.toContain("kkkkkkkkkkkkkkkkkkkkkkkkkkkkkk".repeat(2)); // a chave só vai uma vez, no set_key
+  });
+
+  it("sua própria voz: só cria depois do consentimento", async () => {
+    const { f, user } = await openVoice();
+    await user.click(screen.getByRole("radio", { name: /Sua própria voz/ }));
+    const gravar = await screen.findByRole("button", { name: /Gravar/ });
+    expect(gravar).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Criar minha voz" })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /Eu consinto/ }));
+    expect(sent(f.calls, "voice_cloud", "clone")).toHaveLength(0);
+  });
+});

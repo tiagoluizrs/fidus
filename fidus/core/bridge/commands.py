@@ -147,6 +147,14 @@ class CoreCommands:
         self.h.loop = self.loop
         return self.h.api_key(op, value)
 
+    def cmd_piper(self, op: str = "status", voice: str = ""):
+        self.h.loop = self.loop
+        return self.h.piper(op, voice)
+
+    def cmd_voice_cloud(self, op: str = "status", **a):
+        self.h.loop = self.loop
+        return self.h.voice_cloud(op, **a)
+
     def cmd_local_models(self):
         self.h.loop = self.loop
         return self.h.local_models()

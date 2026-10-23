@@ -53,7 +53,7 @@ def _cmd_say(text: str, character: str | None = None) -> int:
     config = load_config()
     persona = PersonaService(config)
     cid = persona.resolve_id(character)
-    tts = TTSManager(config.voice.speech_rate)
+    tts = TTSManager(config.voice.speech_rate, data_dir=config.data_dir)
     tts.use(persona.voice(cid))  # a voz do personagem
     print(f"Personagem: {cid}   Voz: {tts.voice_name}")
     tts.speak(clean_for_speech(text))

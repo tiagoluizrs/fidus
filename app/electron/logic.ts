@@ -165,11 +165,11 @@ export function isTrustedUrl(url: string, rendererDirUrl: string): boolean {
 /** Comandos que a interface pode mandar ao núcleo (o resto é recusado antes de chegar lá). */
 export const ALLOWED_COMMANDS = new Set([
   "get_state", "mute", "pause", "calls", "set_default_character", "confirm_reply", "get_settings", "set_settings", "ping", "simulate",
-  "characters", "memory", "accounts", "privacy", "about", "voices", "devices", "api_key", "local_models",
+  "characters", "memory", "accounts", "privacy", "about", "voices", "devices", "api_key", "local_models", "piper", "voice_cloud",
 ]);
 
 /** Comandos que só a janela de Configurações pode mandar (o anel só precisa de confirmar, silenciar e afins). */
-export const SETTINGS_ONLY_COMMANDS = new Set(["set_settings", "characters", "memory", "accounts", "privacy", "about", "voices", "devices", "api_key", "local_models", "get_settings"]);
+export const SETTINGS_ONLY_COMMANDS = new Set(["set_settings", "characters", "memory", "accounts", "privacy", "about", "voices", "devices", "api_key", "local_models", "piper", "voice_cloud", "get_settings"]);
 // "quit" não está aqui: só a bandeja encerra o núcleo, não uma página.
 
 // ---------------------------------------------------------------- snapshot acompanhando os eventos
