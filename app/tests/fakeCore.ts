@@ -33,6 +33,7 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
   };
   const piper: Obj = { supported: true, installed: false, download_mb: 22, busy: false, voices: [
     { id: "pt_BR-faber-medium", label: "Faber", size_mb: 63, installed: false }, { id: "pt_BR-cadu-medium", label: "Cadu", size_mb: 63, installed: false }] };
+  const pulled: string[] = [];
   const cloud: Obj = { has_key: false, stored: false, has_sample: false };
   const memory: Obj[] = [];
   const log: Obj[] = [{ ts: "2026-10-23T12:00:00+00:00", tool: "abrir_app", risk: "escrita", decision: "confirmado", args: {}, result: "" }];
@@ -94,7 +95,9 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
         const need = Object.keys(a.patch).filter((k) => ["voz.modelo_whisper", "voz.microfone", "voz.atalho"].includes(k));
         return ok({ saved: Object.keys(a.patch), restart_required: need });
       }
-      case "local_models": return ok({ running: init.ollamaRunning !== false, models: ["qwen3:8b", "llama3.1:8b"], suggested: "qwen3:8b", url: "http://127.0.0.1:11434" });
+      case "local_models":
+        if (a.op === "pull") { pulled.push(a.model); return ok({ started: true }); }
+        return ok({ running: init.ollamaRunning !== false, models: ["qwen3:8b", "llama3.1:8b", ...pulled], suggested: "qwen3:8b", url: "http://127.0.0.1:11434", busy: false });
       case "calls": calls_state = { enabled: a.value, until: null }; return ok({ enabled: a.value });
       case "set_default_character": Object.values(profiles).forEach((p) => (p.is_default = p.id === a.id)); return ok({ default_character: a.id });
       case "characters": return characters(a);

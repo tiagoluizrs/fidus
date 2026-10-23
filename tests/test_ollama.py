@@ -249,3 +249,69 @@ def test_claude_nao_e_afetado(tmp_path):
     o = Orchestrator(cfg, Claude(["escreve"]), lambda p: True, tools={"escreve": Escreve()})
     o.run("faz")
     assert Escreve.ran == 1
+
+
+# ---- baixar modelos pelo painel ----
+
+
+def test_baixa_modelo_com_progresso(fake):
+    from fidus.core.providers.ollama import pull_model
+
+    f = fake(replies=[[{"status": "pulling manifest"}, {"status": "downloading", "total": 100, "completed": 40}, {"status": "downloading", "total": 100, "completed": 100}, {"status": "success"}]])
+    seen = []
+    pull_model(f.url, "llama3.2:3b", lambda d, t: seen.append((d, t)))
+    assert seen == [(40, 100), (100, 100)] and f.requests[0] == {"model": "llama3.2:3b", "stream": True}
+
+
+def test_baixar_modelo_que_nao_existe_ou_nao_terminou_explica(fake):
+    from fidus.core.providers.ollama import pull_model
+
+    f = fake(replies=[[{"error": "pull model manifest: file does not exist"}]])
+    with pytest.raises(OllamaError, match="não existe no catálogo"):
+        pull_model(f.url, "inexistente:1b")
+    f2 = fake(replies=[[{"status": "downloading", "total": 10, "completed": 3}]])
+    with pytest.raises(OllamaError, match="não terminou"):
+        pull_model(f2.url, "x:1b")
+
+
+def test_nome_de_modelo_invalido_e_ollama_fechado(fake):
+    from fidus.core.providers.ollama import pull_model
+
+    with pytest.raises(OllamaError, match="inválido"):
+        pull_model("http://127.0.0.1:9", "a b; rm -rf /")
+    with pytest.raises(OllamaError, match="Ele está aberto"):
+        pull_model("http://127.0.0.1:9", "llama3.2:3b", timeout_s=2)
+
+
+# ---- modelos pequenos que escrevem a chamada de ferramenta como texto ----
+
+AGENDA = ToolSpec("agenda", "Agenda", {"type": "object", "properties": {}})
+
+
+def test_chamada_de_ferramenta_escrita_como_texto_vira_chamada_de_verdade(fake):
+    txt = '{"type":"function","function":{"name":"agenda","parameters":{"acao":"ler","dias":1}}}'
+    f = fake(replies=[[chunk(txt[:30]), chunk(txt[30:]), chunk(done=True)]])
+    got: list[str] = []
+    r = OllamaProvider("m", f.url).complete_stream("s", [Message("user", text="x")], [AGENDA], got.append)
+    assert got == [] and r.text == ""  # o JSON cru não vai para a tela
+    assert (r.tool_calls[0].name, r.tool_calls[0].arguments) == ("agenda", {"acao": "ler", "dias": 1})
+
+
+def test_texto_que_comeca_com_chave_mas_nao_e_ferramenta_chega_inteiro(fake):
+    f = fake(replies=[[chunk('{"nome": "x"} e mais'), chunk(" texto.", done=True)]])
+    got: list[str] = []
+    r = OllamaProvider("m", f.url).complete_stream("s", [Message("user", text="x")], [AGENDA], got.append)
+    assert "".join(got) == '{"nome": "x"} e mais texto.' and not r.tool_calls
+
+
+def test_nome_de_ferramenta_inexistente_no_texto_nao_vira_chamada(fake):
+    txt = '{"name":"apaga_tudo","parameters":{}}'
+    f = fake(replies=[[chunk(txt, done=True)]])
+    r = OllamaProvider("m", f.url).complete("s", [Message("user", text="x")], [AGENDA])
+    assert not r.tool_calls and r.text == txt
+
+
+def test_sem_streaming_tambem_reconhece_a_chamada_escrita_como_texto(fake):
+    f = fake(replies=[[chunk('{"name":"agenda","arguments":{"acao":"ler"}}', done=True)]])
+    r = OllamaProvider("m", f.url).complete("s", [Message("user", text="x")], [AGENDA])
+    assert r.tool_calls[0].name == "agenda" and r.text == ""

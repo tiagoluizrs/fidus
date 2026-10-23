@@ -62,6 +62,7 @@ class OllamaProvider:
                 for t in tools
             ]
         text: list[str] = []
+        held: list[str] = []  # modelos pequenos às vezes ESCREVEM a chamada de ferramenta como JSON no texto: seguramos para conferir
         calls: list[ToolCall] = []
         try:
             with self._open("/api/chat", body) as resp:
@@ -73,9 +74,13 @@ class OllamaProvider:
                         raise OllamaError(_friendly(str(chunk["error"]), self.model))
                     msg = chunk.get("message") or {}
                     if msg.get("content"):
-                        text.append(msg["content"])
+                        piece = msg["content"]
+                        text.append(piece)
                         if on_text:
-                            on_text(msg["content"])
+                            if held or ("".join(text).lstrip().startswith("{") and tools):
+                                held.append(piece)
+                            else:
+                                on_text(piece)
                     for tc in msg.get("tool_calls") or []:
                         fn = tc.get("function") or {}
                         args = fn.get("arguments") or {}
@@ -86,9 +91,14 @@ class OllamaProvider:
             raise OllamaError(_friendly(_http_error_text(e), self.model)) from e
         except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
             raise OllamaError(
-                f"Não consegui falar com o Ollama em {self.url}. Ele está aberto? (Abra o app do Ollama ou rode `ollama serve`; se o Fidus roda no Docker, abra o Ollama com OLLAMA_HOST=0.0.0.0.)"
+                f"Não consegui falar com o Ollama em {self.url}. Ele está aberto? (Abra o app do Ollama ou rode `ollama serve`.)"
             ) from e
-        return Response(text="".join(text), tool_calls=calls)
+        full = "".join(text)
+        if tools and not calls and full.lstrip().startswith("{") and (as_call := _text_tool_call(full, {t.name for t in tools})):
+            return Response(text="", tool_calls=[as_call])
+        if held and on_text:
+            on_text("".join(held))  # era só texto que começava com "{"
+        return Response(text=full, tool_calls=calls)
 
     # ---- utilitários para a tela de Configurações ----
 
@@ -112,6 +122,35 @@ def list_models(url: str = DEFAULT_URL, timeout_s: float = 3.0) -> list[str]:
     return sorted(str(m.get("name")) for m in data.get("models", []) if m.get("name"))
 
 
+MODEL_NAME = __import__("re").compile(r"[A-Za-z0-9][A-Za-z0-9._:/\-]{0,98}")
+
+
+def pull_model(url: str, model: str, progress=None, opener=urllib.request.urlopen, timeout_s: float = 3600.0) -> None:
+    """Baixa um modelo pelo próprio Ollama (o mesmo que `ollama pull`). `progress(feito, total)` em bytes."""
+    url = check_local_url(url)
+    if not MODEL_NAME.fullmatch(model):
+        raise OllamaError("Nome de modelo inválido. Use algo como llama3.2:3b.")
+    req = urllib.request.Request(url + "/api/pull", data=json.dumps({"model": model, "stream": True}).encode(), headers={"Content-Type": "application/json"})
+    try:
+        with opener(req, timeout=timeout_s) as resp:
+            ok = False
+            for raw in resp:
+                if not raw.strip():
+                    continue
+                chunk = json.loads(raw)
+                if chunk.get("error"):
+                    raise OllamaError(_friendly(str(chunk["error"]), model))
+                if progress and chunk.get("total"):
+                    progress(int(chunk.get("completed", 0)), int(chunk["total"]))
+                ok = ok or chunk.get("status") == "success"
+            if not ok:
+                raise OllamaError(f"O download de {model} não terminou. Tente de novo.")
+    except urllib.error.HTTPError as e:
+        raise OllamaError(_friendly(_http_error_text(e), model)) from e
+    except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+        raise OllamaError(f"Não consegui falar com o Ollama em {url}. Ele está aberto?") from e
+
+
 def _to_api(messages: list[Message]) -> list[dict]:
     """Converte o histórico. O Ollama não usa ids: o resultado de uma ferramenta aponta para ela pelo nome."""
     names: dict[str, str] = {}
@@ -128,6 +167,19 @@ def _to_api(messages: list[Message]) -> list[dict]:
         else:
             out.append({"role": "user", "content": m.text})
     return out
+
+
+def _text_tool_call(text: str, names: set[str]) -> ToolCall | None:
+    """Reconhece "{"type":"function","function":{"name":...,"parameters":{...}}}" (ou só {"name":...,"parameters":...}) no texto."""
+    data = _loads_dict(text.strip())
+    fn = data.get("function") if isinstance(data.get("function"), dict) else data
+    name = fn.get("name")
+    args = fn.get("parameters", fn.get("arguments", {}))
+    if isinstance(args, str):
+        args = _loads_dict(args)
+    if isinstance(name, str) and name in names and isinstance(args, dict):
+        return ToolCall("local_text_0", name, dict(args))
+    return None
 
 
 def _loads_dict(text: str) -> dict:
@@ -149,6 +201,8 @@ def _friendly(error: str, model: str) -> str:
     low = error.lower()
     if "not found" in low:
         return f"O modelo '{model}' não está baixado. No terminal: ollama pull {model}"
+    if "file does not exist" in low or "manifest" in low and "pull" in low:
+        return f"O modelo '{model}' não existe no catálogo do Ollama. Confira o nome (ex.: llama3.2:3b)."
     if "does not support tools" in low:
         return f"O modelo '{model}' não suporta ferramentas. Escolha outro (por exemplo qwen3:8b ou llama3.1:8b)."
     return f"O Ollama respondeu com erro: {error}"
