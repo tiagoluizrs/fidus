@@ -22,8 +22,8 @@ Este arquivo permite **retomar o trabalho em outra sessão**. Detalhes históric
 | 3 | Personagens e memória | Feita, mergeada (PR #3) |
 | 4 | Integrações (Gmail, Slack, Agenda, keyring) | Feita, mergeada (PR #4) |
 | 5A | Servidor WebSocket, Electron, bandeja e anel | Feita, mergeada (PR #5) |
-| 5B | Janela de Configurações | **Feita** (branch `claude/etapa-5b-configuracoes`) |
-| 6 | Empacotar | Pendente |
+| 5B | Janela de Configurações | Feita, mergeada (PR #6) |
+| 6 | Empacotar | **Feita** (branch `claude/etapa-6-empacotar`); falta gerar o `.exe` e validar no Windows |
 
 ## Etapa 3: personagens e memória
 
@@ -183,6 +183,44 @@ do atalho (incluindo teclas com a tecla Win), reinício do núcleo pela tela.
 - [ ] Memória: adicionar, buscar, editar, apagar uma, apagar tudo (digitando APAGAR).
 - [ ] Sobre: copiar o diagnóstico (sem segredos).
 
+## Etapa 6: empacotar
+
+**O que foi feito** (README "Empacotar e instalar"; passo a passo em `docs/LANCAMENTO.md`; números em `docs/MEDICOES.md`):
+
+- **Núcleo congelado:** `packaging/fidus-core.spec` (PyInstaller, onedir), `core_entry.py`, `build_core.ps1`/`.sh`. Como os
+  imports são preguiçosos, o `.spec` coleta o pacote `fidus` inteiro e os dados de `openwakeword`, `faster_whisper`,
+  `googleapiclient`, `certifi` e os personagens padrão. Achado no teste: sem `fidus/defaults` o núcleo congelado quebrava
+  (`StopIteration` ao escolher o personagem); corrigido e coberto pelo novo `fidus-core selftest`.
+- **`fidus selftest`:** importa as bibliotecas pesadas e confere os dados empacotados (sai com 1 se faltar algo).
+- **Instalador:** `electron-builder` (NSIS, por usuário, sem administrador, atalho só no Menu Iniciar, sem publicação),
+  núcleo em `resources\core\fidus-core.exe`, `deleteAppDataOnUninstall: false`.
+- **Dados:** novo padrão `%APPDATA%\Fidus` (`fidus/core/paths.py`) com **cópia** (nunca remoção) da antiga `~\.fidus` na
+  primeira execução; cache do Electron em `%APPDATA%\Fidus\app` (não conta como "já tem dados" na migração).
+- "Iniciar com o Windows" já existia (5B, `setLoginItemSettings`, só empacotado).
+- **Verificado em Linux:** build do núcleo congelado, `selftest` congelado, núcleo congelado anunciando porta/token, o app
+  empacotado (`electron-builder --dir`) iniciando o núcleo de `resources/core` e conectando, medição de 10 min em repouso.
+- Testes: Python 361 (incl. `test_paths.py`); app 75 (incl. pastas de dados).
+
+**Mudanças em relação ao PROJETO.md**
+
+- Dependências novas só de build: `pyinstaller` (grupo `build` do uv) e `electron-builder` (devDependency). Nenhuma entra
+  no app instalado além do que já havia.
+- Pasta de dados padrão no Windows mudou de `~\.fidus` para `%APPDATA%\Fidus` (dúvida 20).
+- Tauri/MSIX: só analisados em texto (`docs/LANCAMENTO.md`), nada executado.
+
+**Pendências (precisam do Windows)**
+
+- Gerar o `.exe` de verdade (`npm run dist`), medir tamanho do instalador e do núcleo, instalar numa máquina limpa e
+  percorrer o checklist de `docs/LANCAMENTO.md`; rodar `fidus-core.exe selftest` no Windows (PortAudio, pynput, pywin32,
+  SQLCipher, openWakeWord com ONNX).
+- As medições do `MEDICOES.md` foram feitas com o núcleo **simulado** em Linux; refazer com núcleo real (Whisper
+  carregado, escuta passiva ligada) no Windows.
+- Assinatura de código, falso positivo de antivírus, logo final.
+
+### Checklist manual (Windows, Etapa 6)
+
+Está em `docs/LANCAMENTO.md`, seção 4.
+
 ## Dúvidas para refinar quando o usuário acordar
 
 1. **Tratamento padrão neutro:** Alfred usa "senhor" fixo (mordomo). Para tratamento neutro quanto a gênero, melhor
@@ -220,3 +258,11 @@ do atalho (incluindo teclas com a tecla Win), reinício do núcleo pela tela.
     para a tela). O PROJETO só falava em `fidus secrets`. Manter as duas formas?
 19. **Controles desabilitados:** o que ainda não existe no núcleo (Local/Ollama, Outlook/Teams) aparece desabilitado
     com "em breve", em vez de escondido. Prefere esconder até existir?
+20. **Pasta de dados no Windows:** mudei o padrão para `%APPDATA%\Fidus` (o PROJETO falava em `~/.fidus`) e copio a antiga
+    sem apagar. Concorda, ou prefere manter `~\.fidus` e só mudar o instalador?
+21. **Assinatura de código:** o instalador sai sem assinatura (SmartScreen avisa). Vai comprar certificado? Se sim, qual
+    (OV/EV) e onde guardar a senha (nunca no repositório).
+22. **Tamanho:** o núcleo congelado é grande (~550 MB em Linux, sem compressão). Aceitável, ou quer que eu corte
+    dependências/modelos (por exemplo, trocar o Whisper embutido por baixar no primeiro uso, que já é o padrão)?
+23. **Tauri:** vale migrar do Electron para reduzir RAM/tamanho? Minha sugestão é só depois de medir no Windows (ver
+    `docs/LANCAMENTO.md` seção 5).

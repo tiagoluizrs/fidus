@@ -1,3 +1,4 @@
+import path from "node:path";
 import { ALLOWED_COMMANDS, RingLifecycle, applyEvent, buildTrayTemplate, isTrustedUrl, parseReadyLine, statusText } from "../electron/logic";
 import type { Snapshot } from "../src/shared/protocol";
 
@@ -153,5 +154,14 @@ describe("regras de confiança", () => {
     expect(ALLOWED_COMMANDS.has("quit")).toBe(false);
     expect(ALLOWED_COMMANDS.has("mute")).toBe(true);
     expect([...ALLOWED_COMMANDS].some((c) => /exec|shell|eval/.test(c))).toBe(false);
+  });
+});
+
+describe("pastas de dados", () => {
+  it("o núcleo e o Electron usam subpastas de %APPDATA%\\Fidus, sem se misturar", async () => {
+    const { coreDataDir, electronDataDir } = await import("../electron/paths");
+    expect(coreDataDir("/a", {})).toBe(path.join("/a", "Fidus"));
+    expect(electronDataDir("/a", {})).toBe(path.join("/a", "Fidus", "app"));
+    expect(coreDataDir("/a", { FIDUS_HOME: "/h" })).toBe("/h");
   });
 });
