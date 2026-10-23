@@ -69,6 +69,8 @@ class AudioManager:
         self._muted = False
         self._on_state = on_state
         self._last_state = "off"
+        self.on_level: Callable[[list[float]], None] | None = None  # nível de áudio para a interface
+        self.level_enabled: Callable[[], bool] = lambda: True  # só calcula se alguém está olhando
 
     # ---- fluxo ----
 
@@ -105,6 +107,10 @@ class AudioManager:
             self._ring.append(block)
             captures = list(self._captures)
             subs = [] if self._detection_paused else list(self._subscribers)
+        if self.on_level is not None and self.level_enabled():
+            from .levels import block_levels
+
+            self.on_level(block_levels(block))
         for c in captures:
             c.queue.put(block)
         for cb in subs:

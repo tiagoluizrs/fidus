@@ -16,6 +16,7 @@ from ..actionlog import ActionLog
 from ..config import Config
 from .audio_manager import SAMPLE_RATE, to_float32
 from .characters import character_for
+from ..bridge.events import NullEvents, ui_state
 from .hotkey import GlobalKeyListener, PushToTalk, ToggleHotkey, parse_hotkey
 from .indicator import Indicator
 from .vad import SilenceEndpointer, capture_utterance
@@ -55,8 +56,15 @@ class ListenLoop:
         clock: Callable[[], float] = time.perf_counter,
         beep_fn: Callable[[], None] = beep,
         speaker=None,
+        events=None,
     ):
         self.speaker = speaker  # PersonaSpeaker (opcional)
+        self.ui = events or NullEvents()  # interface (opcional): estado, personagem... (self.events é a fila do laço)
+        self.calls_enabled = True  # "Escutar chamados" (a bandeja liga e desliga)
+        self.paused_until: float | None = None
+        self._pause_timer: threading.Timer | None = None
+        self._stopping = False
+        self._last_ui: tuple | None = None
         self.config, self.manager, self.runner, self.vad = config, manager, runner, vad
         self.handler, self.tts, self.indicator, self.log = handler, tts, indicator, log
         self.out, self.clock, self.beep = out, clock, beep_fn
@@ -80,6 +88,7 @@ class ListenLoop:
             self._abort.set()  # o atalho assume a gravação em curso
         self._ptt_capture = self.manager.open_capture(self.config.wake.preroll_ptt_s)
         self.indicator.show("recording")
+        self._emit_state("listening")
 
     def ptt_up(self) -> None:
         self.events.put(("ptt_up", self.clock()))
@@ -94,6 +103,48 @@ class ListenLoop:
             self._ptt_capture = None
             self.manager.mute()
             self.indicator.show("muted")
+            self._emit_state()
+
+    # ---- controles externos (bandeja e interface; podem vir de outros threads) ----
+
+    def set_muted(self, value: bool) -> None:
+        if bool(value) != self.manager.muted:
+            self.toggle_mute()
+
+    def set_calls_enabled(self, value: bool) -> None:
+        """Liga/desliga a escuta por chamados ("Escutar chamados"). O atalho de teclado continua funcionando."""
+        self._cancel_pause_timer()
+        self.paused_until = None
+        self.calls_enabled = bool(value)
+        if not value:
+            self.manager.pause_detection()
+        elif self.state is State.SLEEPING and self._ptt_capture is None:
+            self.manager.resume_detection()
+            if self.runner:
+                self.runner.flush()
+        self.ui.emit("calls", enabled=self.calls_enabled, until=self.paused_until)
+        self._show()
+
+    def pause_calls(self, minutes: float) -> None:
+        """Pausa os chamados por um tempo (ex.: 60 min) e volta sozinho. 0 cancela a pausa."""
+        if minutes <= 0:
+            self.set_calls_enabled(True)
+            return
+        self.set_calls_enabled(False)
+        self.paused_until = time.time() + minutes * 60
+        self._pause_timer = threading.Timer(minutes * 60, lambda: self.set_calls_enabled(True))
+        self._pause_timer.daemon = True
+        self._pause_timer.start()
+        self.ui.emit("calls", enabled=False, until=self.paused_until)
+
+    def _cancel_pause_timer(self) -> None:
+        if self._pause_timer:
+            self._pause_timer.cancel()
+            self._pause_timer = None
+
+    def request_stop(self) -> None:
+        self._stopping = True
+        self.events.put(("stop",))  # acorda o laço
 
     # ---- laço principal ----
 
@@ -110,7 +161,7 @@ class ListenLoop:
         self.out(f"Segure {self.config.voice.hotkey} para falar; {w.mute_hotkey} silencia/reativa o microfone. Ctrl+C sai.")
         self._sleep()
         try:
-            while True:
+            while not self._stopping:
                 try:
                     event = self.events.get(timeout=0.5)
                 except queue.Empty:
@@ -133,7 +184,15 @@ class ListenLoop:
 
     # ---- transições ----
 
+    def _emit_state(self, override: str | None = None) -> None:
+        state = override or ui_state(self.state.value, self.manager.muted)
+        key = (state, self.manager.state)
+        if key != self._last_ui:
+            self._last_ui = key
+            self.ui.emit("state", state=state, mic=self.manager.state)
+
     def _show(self) -> None:
+        self._emit_state()
         if self.manager.muted:
             self.indicator.show("muted")
         elif self.state is State.PROCESSING:
@@ -146,7 +205,7 @@ class ListenLoop:
     def _sleep(self) -> None:
         self._abort.clear()
         self.state = State.SLEEPING
-        if self._ptt_capture is None:  # se o atalho está gravando, a detecção continua pausada
+        if self._ptt_capture is None and self.calls_enabled:  # atalho gravando ou chamados desligados: detecção pausada
             self.manager.resume_detection()
             if self.runner:
                 self.runner.flush()
@@ -162,12 +221,14 @@ class ListenLoop:
         character = character_for(act.word, self.config.wake.default_character)
         if self.speaker and self.config.characters.speak_start:
             self.indicator.show("paused")  # enquanto fala, o microfone não grava nada
+            self._emit_state("speaking")
             self.speaker.say_moment(character, "inicio", wait=True)  # fala curta, em cache, na voz do personagem
         capture = self.manager.open_capture(self.config.wake.preroll_call_s)
         opened = self.clock()
         if self.config.wake.beep:
             self.beep()
         self.indicator.show("recording")
+        self._emit_state()
         self.out(f"Chamado: {act.word.id} -> {character} (pontuação {act.score:.2f})")
         self.log.event(
             "chamado",
@@ -185,6 +246,7 @@ class ListenLoop:
         while True:
             ep = SilenceEndpointer(w.silence_s, w.max_record_s, wait)
             self.state = State.RECORDING if wait == w.wait_speech_s else State.FOLLOWUP
+            self._emit_state()
             audio, reason = capture_utterance(capture, self.vad, ep, self._abort.is_set)
             capture.close()
             if audio is None:
@@ -194,6 +256,7 @@ class ListenLoop:
             end = self.clock() - (w.silence_s if reason == "silencio" else 0.0)  # fim real da fala
             self.state = State.PROCESSING
             self.indicator.show("paused")
+            self._emit_state()
             farewell = self.handler.handle_audio(to_float32(audio), end, character)
             if farewell or self._abort.is_set() or self.manager.muted:
                 break  # despedida, atalho ou silêncio: encerra a conversa sem esperar continuação
@@ -213,5 +276,6 @@ class ListenLoop:
         if len(audio) >= self.config.voice.min_record_s * SAMPLE_RATE and not self.manager.muted:
             self.state = State.PROCESSING
             self.indicator.show("paused")
+            self._emit_state()
             self.handler.handle_audio(to_float32(audio), t, self.config.wake.default_character)
         self._sleep()

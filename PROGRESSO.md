@@ -20,8 +20,9 @@ Este arquivo permite **retomar o trabalho em outra sessão**. Detalhes históric
 | 2 | Voz push-to-talk (Whisper local, SAPI, streaming, confirmação por voz) | Feita, mergeada (PR #2) |
 | 2B | Palavra de ativação (openWakeWord), AudioManager, `listen`, personagens pelo nome | Feita, mergeada (PR #2) |
 | 3 | Personagens e memória | Feita, mergeada (PR #3) |
-| 4 | Integrações (Gmail, Slack, Agenda, keyring) | **Feita** (branch `claude/etapa-4-integracoes`) |
-| 5A/5B | Interface Electron + React | Pendente |
+| 4 | Integrações (Gmail, Slack, Agenda, keyring) | Feita, mergeada (PR #4) |
+| 5A | Servidor WebSocket, Electron, bandeja e anel | **Feita** (branch `claude/etapa-5a-nucleo-e-anel`) |
+| 5B | Janela de Configurações | Pendente |
 | 6 | Empacotar | Pendente |
 
 ## Etapa 3: personagens e memória
@@ -99,6 +100,51 @@ Este arquivo permite **retomar o trabalho em outra sessão**. Detalhes históric
 - Keyring: tamanho máximo da credencial do Windows (o JSON do Google tem < 1000 caracteres) e entradas `fidus/*`.
 - Checklist: README, "Checklist manual (Windows, Etapa 4)".
 
+## Etapa 5A: servidor local, bandeja e anel
+
+**O que foi feito** (README, seção "Interface"; protocolo em `docs/PROTOCOLO.md`):
+
+- **Núcleo** (`fidus/core/bridge/`): servidor WebSocket em `127.0.0.1` (porta aleatória, token aleatório por
+  inicialização anunciado só na saída padrão do processo filho, recusa `Origin`, autenticação em 5 s, 1 MB por mensagem),
+  protocolo v1 (estado, nível ~37/s, legendas em pedaços, personagem, confirmação pendente, chamados, configurações),
+  comandos validados (`mute`, `pause`, `calls`, `set_default_character`, `confirm_reply`, `get/set_settings`, `ping`,
+  `quit`), `fidus daemon [--simulado] [--stdin-watch]` e **núcleo simulado** (sem microfone/modelo/voz).
+- `ConfirmBroker`: a confirmação aparece na tela (Sim/Não) e é falada ao mesmo tempo; vale a primeira resposta. O
+  `listen` do terminal continua com `[s/n]`.
+- `ListenLoop` passou a avisar a interface (estado, "escutar chamados", pausa por tempo, silenciar); `VoiceLoop` envia
+  legendas e estados; `AudioManager` calcula o nível só quando há interface conectada.
+- `settings_schema.py`: só chaves da tabela, com tipo e faixa, são gravadas pela interface (tudo ou nada).
+- **App** (`app/`, Electron + React + TypeScript + Vite): processo principal com o cliente do WebSocket (o token nunca vai
+  ao renderer), bandeja, janela do anel criada sob demanda e destruída depois de 6 s parado, anel em Canvas (4 camadas,
+  estados, temas claro/escuro como no design), legendas, indicador de microfone, Esc, diálogo de confirmação acessível,
+  tema que acompanha o Windows ao vivo, ícones gerados por script (`app/scripts/make_icons.py`).
+- Segurança do Electron: `contextIsolation`, sem `nodeIntegration`, sandbox, preload mínimo, CSP restritiva, sem rede nem
+  navegação, sem permissões, comandos por allowlist e só de páginas do app (`quit` fora). Testes impedem afrouxar.
+- Testes: Python 301 (servidor, auth, origin, protocolo, núcleo simulado, confirmação, órfão); app 59 (anel, modelo,
+  tela, bandeja, ciclo de vida, núcleo, segurança, protocolo contra o núcleo simulado **real**).
+- Verificado no Electron de verdade (xvfb, Linux): núcleo simulado conectado, janela do anel criada na conversa e
+  destruída depois, capturas de tela nos dois temas conferidas.
+
+**Mudanças em relação ao PROJETO.md**
+
+- Dependência nova no Python: `websockets` (a biblioteca padrão não tem servidor WebSocket). No app: Electron, React,
+  Vite, Vitest etc. (lista em `app/package.json`).
+- O **Esc** é um atalho global registrado só enquanto o anel existe (a janela abre sem roubar o foco, então não receberia
+  a tecla). Ver dúvida 14.
+- Ícones provisórios gerados por código (anel, anel ondulado e ponto). A versão final do logo (texto em contornos,
+  SVG/ICO) continua pendente, como no PROJETO.md.
+- O nível de áudio da **voz do assistente** não existe no núcleo (SAPI não expõe); no estado "falando" o anel usa um
+  envelope sintético.
+- O adaptador de modelo **local (Ollama)** do PROJETO continua **não implementado** (só Claude). A tela "Modelo de IA" da
+  5B mostrará Local como "em breve". Ver dúvida 16.
+
+**Pendências de validação no Windows**
+
+- Tudo do app foi verificado em Linux (xvfb). No Windows: ícone na bandeja (cores/tamanho), `showInactive` + `alwaysOnTop`
+  em tela cheia, Esc global, tema ao vivo, múltiplos monitores (o anel abre no principal), o núcleo Python como filho
+  (`uv run fidus daemon`) e o encerramento sem processo órfão.
+- Nível de áudio real e latência da interface com o microfone real.
+
 ## Dúvidas para refinar quando o usuário acordar
 
 1. **Tratamento padrão neutro:** Alfred usa "senhor" fixo (mordomo). Para tratamento neutro quanto a gênero, melhor
@@ -124,3 +170,11 @@ Este arquivo permite **retomar o trabalho em outra sessão**. Detalhes históric
 12. **Fricção da regra de contaminação:** depois de ler e-mail/mensagem/evento, até "abre o bloco de notas" pede
     confirmação no mesmo comando. Aceitável? (Ler a própria memória não conta.)
 13. **Chave do Windows Credential Manager:** limite de ~2,5 KB por credencial. O JSON do Google cabe, mas confirmar no PC.
+14. **Esc global enquanto o anel está aberto:** o anel não rouba o foco (para não atrapalhar quem está digitando), então
+    uso um atalho global só enquanto ele existe. Aceitável? Alternativa: a janela toma o foco (Esc normal, mas interrompe
+    a digitação).
+15. **Fechar o anel depois de 6 s parado** é configurável (`app.janela_inatividade_s` na 5B). Valor padrão ok?
+16. **Modelo local (Ollama):** está no escopo da v1 do PROJETO, mas nenhuma etapa pedida inclui o adaptador. Quer que eu
+    faça (adaptador no formato OpenAI, restrito a ferramentas de leitura) depois da etapa 6?
+17. **Logo final:** os ícones atuais são provisórios (gerados por código). Quando tiver o SVG final, é só trocar
+    `app/assets/` e rodar o empacotamento.
