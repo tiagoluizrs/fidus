@@ -27,6 +27,7 @@ body { background: var(--bg); color: var(--text); overflow: hidden; -webkit-font
 .caption { margin: 0; line-height: 1.45; }
 .caption.user { font-size: 14px; color: var(--text-2); }
 .caption.assistant { font-size: 16px; color: var(--text); }
+.caption.error { font-size: 14px; color: var(--error); }
 
 .hint { position: absolute; left: 48px; bottom: 56px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
 kbd { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; }

@@ -17,6 +17,7 @@ export interface AppModel {
   user: Caption;
   assistant: Caption;
   confirm: { id: string; text: string } | null;
+  error: string; // último erro do núcleo (modelo fora do ar, chave inválida...); some na próxima fala
 }
 
 export const initialModel: AppModel = {
@@ -32,6 +33,7 @@ export const initialModel: AppModel = {
   user: { text: "", final: true },
   assistant: { text: "", final: true },
   confirm: null,
+  error: "",
 };
 
 export function fromSnapshot(s: Snapshot): AppModel {
@@ -67,7 +69,7 @@ export function reduce(m: AppModel, e: CoreEvent): AppModel {
     case "caption":
       if (e.role === "user") {
         // nova fala do usuário: começa uma troca nova, a resposta anterior some
-        return { ...m, user: { text: e.text, final: e.final }, assistant: { text: "", final: true } };
+        return { ...m, user: { text: e.text, final: e.final }, assistant: { text: "", final: true }, error: "" };
       }
       if (e.final) {
         return { ...m, assistant: { text: e.text || m.assistant.text, final: true } };
@@ -77,8 +79,10 @@ export function reduce(m: AppModel, e: CoreEvent): AppModel {
       return { ...m, confirm: { id: e.id, text: e.text } };
     case "confirm_done":
       return m.confirm && m.confirm.id === e.id ? { ...m, confirm: null } : m;
+    case "error":
+      return { ...m, error: e.message };
     default:
-      return m; // level, settings, error: tratados fora do modelo
+      return m; // level, settings: tratados fora do modelo
   }
 }
 

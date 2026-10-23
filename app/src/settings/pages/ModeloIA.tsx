@@ -59,7 +59,7 @@ export function ModeloIA() {
         )}
         {local && (
           <Row label="Modelo local" htmlFor="local-model"
-            hint={ollama?.running === false ? `O Ollama não está aberto. Abra o app dele e, se preciso, baixe um modelo no terminal: ollama pull ${ollama.suggested}` : "Escolha um modelo que suporte ferramentas (por exemplo qwen3:8b ou llama3.1:8b)."}>
+            hint={ollama?.running === false ? `O Ollama não está acessível. Abra o app dele (se o Fidus roda no Docker, abra com OLLAMA_HOST=0.0.0.0 para o container enxergar) e, se preciso, baixe um modelo: ollama pull ${ollama.suggested}` : "Escolha um modelo que suporte ferramentas (por exemplo qwen3:8b ou llama3.1:8b)."}>
             <span className="inline">
               <Badge tone={ollama?.running ? "ok" : "neutral"}>{ollama == null ? "Verificando…" : ollama.running ? "Ollama aberto" : "Ollama fechado"}</Badge>
               <select id="local-model" value={localModel} onChange={(e) => save({ "modelo.local": e.target.value })}>
