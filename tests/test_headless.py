@@ -290,7 +290,7 @@ def test_voz_do_sistema_cai_no_navegador_e_piper_instalado_fala_pelo_nucleo(conf
 
     cmds, loop, sink = make(config, [Response("Tudo certo. Pode seguir.")], monkeypatch, tmp_path)
     cmds.handle("ask", {"text": "oi"})
-    assert wait_for(lambda: ("voice_mode", {"mode": "browser", "engine": "sapi"}) in sink.seen)  # padrão: voz do navegador
+    assert wait_for(lambda: ("voice_mode", {"mode": "browser", "engine": "kokoro"}) in sink.seen)  # padrão: Kokoro ainda não instalado, então a voz do navegador
     assert wait_for(lambda: loop._busy.acquire(blocking=False))
     loop._busy.release()
 

@@ -222,9 +222,12 @@
     ]
   },
   "voice": {
-    "engine": "sapi",
-    "voice": "",
+    "engine": "kokoro",
+    "voice": "pf_dora",
     "pitch": 2,
-    "rate": 1
+    "rate": -1,
+    "timbre": 2,
+    "edge": 8,
+    "pronunciations": "Donna=Dônà"
   }
 }

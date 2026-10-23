@@ -20,7 +20,7 @@ EVENTS = ("ready", "status", "state", "characters_changed", "memory_changed", "a
 COMMANDS = (
     "get_state", "mute", "pause", "calls", "set_default_character", "confirm_reply", "get_settings", "set_settings",
     "ping", "quit",
-    "characters", "memory", "accounts", "privacy", "about", "voices", "devices", "api_key", "local_models", "piper", "voice_cloud", "ask", "ask_audio", "browser_mic",
+    "characters", "memory", "accounts", "privacy", "about", "voices", "devices", "api_key", "local_models", "piper", "kokoro", "voice_cloud", "ask", "ask_audio", "browser_mic",
     "simulate",  # só no modo simulado (desenvolvimento da interface)
 )
 

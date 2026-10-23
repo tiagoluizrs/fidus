@@ -30,7 +30,7 @@ def test_perfil_padrao_completo(store, cid):
     for m in MOMENTS:
         assert len(p.phrases[m]) >= 6, f"{cid}/{m} tem menos de 6 frases"
     assert len(p.ring["dark"]) == 3 and len(p.ring["light"]) == 3
-    assert p.voice.engine == "sapi"
+    assert p.voice.engine == "kokoro"
 
 
 def test_alfred_e_o_padrao_e_os_tres_sao_diferentes(store):
@@ -126,7 +126,7 @@ def test_restaurar_voz_e_personalidade(store):
     store.set_extra("alfred", "seja breve")
     store.set_style("alfred", "mais_aspero")
     store.reset_voice("alfred")
-    assert store.load("alfred").voice.voice == "" and store.load("alfred").personality.extra == "seja breve"
+    assert store.load("alfred").voice.voice == "bm_george" and store.load("alfred").personality.extra == "seja breve"
     store.reset_personality("alfred")
     p = store.load("alfred").personality
     assert p.extra == "" and p.base_style == "padrao"

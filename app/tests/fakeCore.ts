@@ -31,6 +31,7 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
     "privacidade.registrar_acoes": true, "privacidade.guardar_log_dias": 30, "privacidade.guardar_historico": true,
     "privacidade.avisar_microfone": true, "modelo.provedor": "claude", "modelo.claude": "claude-sonnet-5-5", "modelo.gemini": "gemini-2.5-flash", "modelo.local": "qwen3:8b", "modelo.local_acoes": false, "modelo.local_acoes_ciente": false, "arquivos.pastas_liberadas": [], ...init.effective,
   };
+  const kokoro: Obj = { supported: true, installed: false, download_mb: 116, busy: false, voices: [{ id: "pf_dora", label: "Dora (feminina)", installed: false }, { id: "pm_alex", label: "Alex (masculina)", installed: false }] };
   const piper: Obj = { supported: true, installed: false, download_mb: 22, busy: false, voices: [
     { id: "pt_BR-faber-medium", label: "Faber", size_mb: 63, installed: false }, { id: "pt_BR-cadu-medium", label: "Cadu", size_mb: 63, installed: false }] };
   const pulled: string[] = [];
@@ -102,6 +103,10 @@ export function installFakeCore(init: { effective?: Obj; services?: Obj[]; micSt
       case "calls": calls_state = { enabled: a.value, until: null }; return ok({ enabled: a.value });
       case "set_default_character": Object.values(profiles).forEach((p) => (p.is_default = p.id === a.id)); return ok({ default_character: a.id });
       case "characters": return characters(a);
+      case "kokoro": {
+        if (a.op === "install") kokoro.installed = true;
+        return ok(a.op === "install" ? { started: true } : { ...kokoro, voices: kokoro.voices.map((x: Obj) => ({ ...x, installed: kokoro.installed })) });
+      }
       case "piper": {
         if (a.op === "install") piper.installed = true;
         if (a.op === "download_voice") piper.voices.find((x: Obj) => x.id === a.voice).installed = true;

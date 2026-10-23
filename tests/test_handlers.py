@@ -60,7 +60,7 @@ def test_lista_e_perfil_completo_com_padroes(cmds):
     assert p["personality"]["controls"]["formalidade"] == {"value": 70, "default": 70}
     assert set(p["phrases"]) == {"inicio", "concluir", "confirmar", "erro", "despedida"}
     assert len(p["phrases"]["inicio"]["items"]) == 7 and p["address"]["mode"] == "fixed" and "{saudacao}" in p["variables"]
-    assert p["voice"]["engine"] == "sapi" and p["ring"]["dark"]
+    assert p["voice"]["engine"] == "kokoro" and p["ring"]["dark"]
 
 
 def test_slider_restaurar_controle_e_personalidade(cmds):
@@ -99,7 +99,7 @@ def test_tratamento_modo_voz_e_restaurar_tudo(cmds):
     p = call(cmds, "characters", op="set_voice", id="alfred", engine="piper", voice="C:/v.onnx", pitch=3, rate=-2)
     assert p["voice"]["engine"] == "piper" and p["voice"]["pitch"] == 3
     p = call(cmds, "characters", op="reset_voice", id="alfred")
-    assert p["voice"]["engine"] == "sapi"
+    assert p["voice"]["engine"] == "kokoro"
     p = call(cmds, "characters", op="reset", id="alfred")
     assert not p["edited"] and len(p["address"]["items"]) == 2
 
@@ -560,7 +560,7 @@ def test_criar_voz_por_descricao_salva_no_personagem_e_apagar_volta_ao_padrao(cm
     assert (v["engine"], v["voice"], v["description"]) == ("descricao", "voz123", "Masculina, grave")
     call(cmds, "voice_cloud", op="delete_voice", id="alfred")
     assert ("delete", "voz123") in calls
-    assert call(cmds, "characters", op="get", id="alfred")["voice"]["engine"] == "sapi"
+    assert call(cmds, "characters", op="get", id="alfred")["voice"]["engine"] == "kokoro"
     with pytest.raises(ValueError, match="desconhecido"):
         call(cmds, "voice_cloud", op="delete_voice", id="naoexiste")
 
@@ -693,3 +693,11 @@ def test_gemini_lista_os_modelos_da_chave_e_pede_a_chave_antes(cmds, monkeypatch
     monkeypatch.setattr(gemini, "list_models", quebra)
     with pytest.raises(ValueError, match="não foi aceita"):
         call(cmds, "api_key", op="models", provider="gemini")
+
+
+def test_voz_kokoro_e_efeito_robo_sao_gravados_e_validados(cmds):
+    p = call(cmds, "characters", op="set_voice", id="jarbis", engine="kokoro", voice="pf_dora", effect="robo")
+    assert p["voice"]["engine"] == "kokoro" and p["voice"]["effect"] == "robo"
+    with pytest.raises(ValueError, match="Efeito"):
+        call(cmds, "characters", op="set_voice", id="jarbis", effect="eco")
+    assert call(cmds, "kokoro", op="status")["installed"] is False

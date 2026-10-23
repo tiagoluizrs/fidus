@@ -109,6 +109,11 @@ class HeadlessLoop:
             store = PiperStore(self.config.data_dir / "piper")
             if not store.exe.is_file() or store.model_path(voice.voice) is None:
                 return None
+        elif voice.engine == "kokoro":
+            from ..voice.kokoro_setup import KokoroStore
+
+            if not KokoroStore(self.config.data_dir / "kokoro").installed():
+                return None
         elif voice.engine in ("descricao", "propria"):
             if not voice.voice or not vault.get_secret(vault.ELEVENLABS_KEY):
                 return None

@@ -91,7 +91,7 @@ class Handlers:
                             "controls": controls, "extra": pr.personality.extra},
             "address": {"mode": pr.address_mode, "fixed": pr.address_fixed, "items": items(pr.address), "deleted": gone(ADDRESS)},
             "phrases": {m: {"items": items(pr.phrases[m]), "deleted": gone(m)} for m in MOMENTS},
-            "voice": {"engine": pr.voice.engine, "voice": pr.voice.voice, "pitch": pr.voice.pitch, "rate": pr.voice.rate, "description": pr.voice.description,
+            "voice": {"engine": pr.voice.engine, "voice": pr.voice.voice, "pitch": pr.voice.pitch, "rate": pr.voice.rate, "description": pr.voice.description, "effect": pr.voice.effect, "timbre": pr.voice.timbre, "edge": pr.voice.edge, "pronunciations": pr.voice.pronunciations,
                       "default": d["voice"]},
             "variables": ["{tratamento}", "{nome}", "{sobrenome}", "{periodo}", "{hora}", "{dia}", "{saudacao}"],
         }
@@ -149,14 +149,18 @@ class Handlers:
             else:
                 s.reset_list(cid, lst)
         elif op == "set_voice":
-            fields = {k: a[k] for k in ("engine", "voice", "pitch", "rate", "description") if k in a}
-            if "engine" in fields and fields["engine"] not in ("sapi", "piper", "descricao", "propria"):
+            fields = {k: a[k] for k in ("engine", "voice", "pitch", "rate", "description", "effect", "timbre", "edge", "pronunciations") if k in a}
+            if "engine" in fields and fields["engine"] not in ("sapi", "piper", "kokoro", "descricao", "propria"):
                 raise ValueError("Motor de voz inválido.")
             if "voice" in fields:
                 fields["voice"] = str(fields["voice"])[:300]
             if "description" in fields:
                 fields["description"] = str(fields["description"])[:1000]
-            for k in ("pitch", "rate"):
+            if "pronunciations" in fields:
+                fields["pronunciations"] = str(fields["pronunciations"])[:500]
+            if "effect" in fields and fields["effect"] not in ("", "robo"):
+                raise ValueError("Efeito de voz inválido.")
+            for k in ("pitch", "rate", "timbre", "edge"):
                 if k in fields and (isinstance(fields[k], bool) or not isinstance(fields[k], (int, float))):
                     raise ValueError(f"'{k}' precisa ser um número de -10 a 10.")
             s.set_voice(cid, **fields)
@@ -505,6 +509,26 @@ class Handlers:
                 self._job(voice, lambda progress: store.download_voice(voice, progress))
             elif op == "remove_voice":
                 store.remove_voice(voice)
+                return {**store.status(), "busy": bool(self._jobs)}
+            else:
+                raise ValueError(f"Operação desconhecida: {op}")
+        except SetupError as e:
+            raise ValueError(str(e)) from e
+        return {"started": True}
+
+    def kokoro(self, op: str = "status") -> dict:
+        """Instalação guiada do Kokoro (voz neural local, com voz feminina). Baixa em segundo plano; avisa por `voice_setup`."""
+        from ..voice.kokoro_setup import KokoroStore
+        from ..voice.piper_setup import SetupError
+
+        store = KokoroStore(self.config.data_dir / "kokoro")
+        try:
+            if op == "status":
+                return {**store.status(), "busy": bool(self._jobs)}
+            if op == "install":
+                self._job("kokoro", store.install)
+            elif op == "remove":
+                store.remove()
                 return {**store.status(), "busy": bool(self._jobs)}
             else:
                 raise ValueError(f"Operação desconhecida: {op}")

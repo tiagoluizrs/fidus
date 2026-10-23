@@ -154,7 +154,7 @@ def _text_mode(args) -> int:
 
 
 SELFTEST_MODULES = ["anthropic", "keyring", "numpy", "sounddevice", "faster_whisper", "openwakeword (enxuto)", "sqlcipher3", "websockets",
-                    "googleapiclient.discovery", "google_auth_oauthlib.flow", "psutil", "pynput.keyboard", "win32com.client"]
+                    "googleapiclient.discovery", "google_auth_oauthlib.flow", "psutil", "pynput.keyboard", "win32com.client", "kokoro_onnx"]
 
 
 def _cmd_selftest() -> int:
@@ -176,6 +176,17 @@ def _cmd_selftest() -> int:
         except Exception as e:  # noqa: BLE001 - queremos listar todas as falhas, não parar na primeira
             bad += 1
             print(f"FALHOU  {name}: {type(e).__name__}: {e}")
+    try:  # o Kokoro precisa da biblioteca e dos dados do espeak-ng dentro do pacote
+        import os
+
+        import espeakng_loader
+
+        found = os.path.isfile(espeakng_loader.get_library_path()) and os.path.isdir(espeakng_loader.get_data_path())
+        print(f"{'ok     ' if found else 'FALHOU '} espeak-ng (fonemas do Kokoro)")
+        bad += 0 if found else 1
+    except Exception as e:  # noqa: BLE001
+        bad += 1
+        print(f"FALHOU  espeak-ng: {type(e).__name__}: {e}")
     from .core.characters.store import CharacterStore  # noqa: F401  (confere também os dados empacotados)
     from .core.config import load_config
 
