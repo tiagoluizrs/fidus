@@ -18,6 +18,24 @@ jobs:
       - name: Conferir o pacote (selftest)
         run: .\app\resources-core\fidus-core\fidus-core.exe selftest
         env: { FIDUS_HOME: "${{ runner.temp }}\\fidus-home" }
+      - name: Partida do núcleo (modo real, como o app instalado)
+        # O selftest só importa bibliotecas; este passo sobe o núcleo de verdade e exige o aviso FIDUS_READY.
+        # Se o núcleo quebrar na partida (o app ficaria em "Iniciando..." para sempre), o build falha aqui e mostra o erro.
+        shell: pwsh
+        run: |
+          $env:FIDUS_HOME = Join-Path $env:RUNNER_TEMP "fidus-boot"
+          $out = Join-Path $env:RUNNER_TEMP "boot-out.txt"; $err = Join-Path $env:RUNNER_TEMP "boot-err.txt"
+          $p = Start-Process -FilePath ".\app\resources-core\fidus-core\fidus-core.exe" -ArgumentList "daemon" `
+                 -RedirectStandardOutput $out -RedirectStandardError $err -PassThru -WindowStyle Hidden
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $p.HasExited; $i++) {
+            Start-Sleep -Seconds 1
+            if ((Test-Path $out) -and (Select-String -Path $out -Pattern "FIDUS_READY" -Quiet)) { $ok = $true; break }
+          }
+          Write-Host "--- saída ---"; if (Test-Path $out) { Get-Content $out }
+          Write-Host "--- erros ---"; if (Test-Path $err) { Get-Content $err }
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+          if (-not $ok) { throw "O núcleo não chegou ao FIDUS_READY" }
       - name: Instalador (electron-builder)
         run: cd app; npm ci; npm run dist
       - uses: actions/upload-artifact@v4
